@@ -1,7 +1,7 @@
 import polars as pl
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import get_noise, fft_file, matching_peaks
+from utils import get_noise, fft_df, matching_peaks, fft_arr
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
@@ -52,12 +52,12 @@ negative_water = spectra_water.filter(pl.col('intensity') < 3 * sigma_water)
 negative_deu = spectra_deu.filter(pl.col('intensity') < 3 * sigma_deu)
 negative_so2 = spectra_so2.filter(pl.col('intensity') < 3 * sigma_so2)
 
-#Spectra only with signals to .CSV
-fft_file('Spectra_signals/signals_water.fft', signals_water, sep=',')
-fft_file('Spectra_signals/signals_deu.fft', signals_deu, sep=',')
-fft_file('Spectra_signals/signals_so2.fft', signals_so2, sep=',')
+#Spectra only with signals to FFT
+fft_df('Spectra_signals/signals_water.fft', signals_water, sep=',')
+fft_df('Spectra_signals/signals_deu.fft', signals_deu, sep=',')
+fft_df('Spectra_signals/signals_so2.fft', signals_so2, sep=',')
 
-#FIND PEAKS
+#FIND PEAKS NAD TURN INTO FFT
 freq = signals_water['freq'].to_numpy()
 int_w = signals_water['intensity'].to_numpy()
 int_d = signals_deu['intensity'].to_numpy()
@@ -67,37 +67,36 @@ peaks_w, props_w = find_peaks(int_w, prominence = 0.0)
 peaks_d, props_d = find_peaks(int_d, prominence = 0.0)
 peaks_so2, props_so2 = find_peaks(int_so2, prominence = 0.0)
 
-len(peaks_w)
+len(peaks_so2)
 
 freq_peaks_w = freq[peaks_w]
 freq_peaks_d = freq[peaks_d]
 freq_peaks_so2 = freq[peaks_so2]
 int_peaks_w = int_w[peaks_w]
 int_peaks_d = int_d[peaks_d]
-int_peaks_so2= int_d[peaks_so2]
+int_peaks_so2= int_so2[peaks_so2]
+fft_arr('Spectra_signals/max_water.fft', freq_peaks_w, int_peaks_w, sep=',')
+fft_arr('Spectra_signals/max_deu.fft', freq_peaks_d, int_peaks_d, sep=',')
+fft_arr('Spectra_signals/max_so2.fft', freq_peaks_so2, int_peaks_so2, sep=',')
 
-np.savetxt("peaks_water.csv", np.column_stack((freq_peaks_w, int_peaks_w)), delimiter=",", header="Frequency,Intensity", comments="")
-np.savetxt("peaks_deu.csv", np.column_stack((freq_peaks_d, int_peaks_d)), delimiter=",", header="Frequency,Intensity", comments="")
-np.savetxt("peaks_so2.csv", np.column_stack((freq_peaks_so2, int_peaks_so2)), delimiter=",", header="Frequency,Intensity", comments="")
 
 #MATCH PEAKS BETWEEN SPECTRA
-matched_freqs1, matched_int_w, matched_int_d = matching_peaks(freq_peaks_w, int_peaks_w, freq_peaks_d, int_peaks_d, 1)
-matched_freqs2, matched_int_w, matched_int_so2 = matching_peaks(freq_peaks_w, int_peaks_w, freq_peaks_so2, int_peaks_so2, 1)
+matched_freqs1, matched_int_w, matched_int_d = matching_peaks(freq_peaks_w, int_peaks_w, freq_peaks_d, int_peaks_d, freq[1]-freq[0])
+matched_freqs2, matched_int_w, matched_int_so2 = matching_peaks(freq_peaks_w, int_peaks_w, freq_peaks_so2, int_peaks_so2, freq[1]-freq[0])
 len(matched_freqs2)
-matched_freqs3, matched_int_w, matched_int_so2 = matching_peaks(matched_freqs, matched_int_w, freq_peaks_so2, int_peaks_so2, 1)
 
 
-
+#CSV file
 df_matched_peaks = pl.DataFrame({
-    "Frequency": matched_freqs,
+    "Frequency": matched_freqs2,
     "Intensity_water": matched_int_w,
-    "Intensity_deu": matched_int_d
+    "Intensity_deu": matched_int_so2
 })
 
-df__matched_peaks = df_peaks.with_columns([(pl.col('Intensity_deu')/pl.col('Intensity_water')).alias("ratio_d/w")])
+df__matched_peaks = df_matched_peaks.with_columns([(pl.col('Intensity_deu')/pl.col('Intensity_water')).alias("ratio_d/w")])
 
-df_peaks.write_csv('peaks_water+deu.csv', include_header=True)
-print(df_peaks)
+df_matched_peaks.write_csv('peaks_water+so2.csv', include_header=True)
+print(df_matched_peaks)
 
 plt.figure()  # start a new figure
 

@@ -6,11 +6,13 @@ set title "Rotational Spectra"
 set xlabel "Frequency"
 set ylabel "Intensity"
 set grid
-set key left top
+#set key left top
 
 # Plot
-plot 'peaks_water+deu.csv' using 1:2 with points pointtype 7 pointsize 1.5 linecolor rgb "red" title "H2O", \
-     'peaks_water+deu.csv' using 1:3 with lines linewidth 2 linecolor rgb "blue" title "D2O"
+plot '../Spectra_signals/signals_so2.fft' using 1:2 w l lw 0.5 linecolor rgb "blue", \
+     '../Spectra_signals/max_so2.fft' using 1:2 w p ps 0.5 pointtype 7 linecolor rgb "red" title "SO2", \
+     '../Spectra_signals/signals_water.fft' using 1:(-$2) w l lw 0.5 linecolor rgb "red", \
+     '../Spectra_signals/max_water.fft' using 1:(-$2) with points ps 0.5 pointtype 7 linecolor rgb "orange" title "H2O"
 
 pause -1  # Wait until you close the interactive window
 
