@@ -3,8 +3,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
+from pathlib import Path
+
 
 def fft_file(file_path, spectra, sep):
+
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
 
     extra_lines = [
         '!Params',
@@ -41,7 +46,34 @@ def get_noise(spectra, noise_regions):
 
     return std_regions.mean()
 
-#########################
+#############################
+
+def matching_peaks(freq1, int1, freq2, int2, point_diff):
+
+
+    diff = freq1[point_diff]-freq1[0] # frecuencia máxima de diferencia para considerar "coincidente"
+
+    matched_freqs = []
+    matched_ints_1 = []
+    matched_ints_2 = []
+
+    for f1, i1 in zip(freq1, int1):
+        # Buscar picos en spectrum deu cercanos a f1 (water peaks)
+        diffs = np.abs(freq2 - f1)
+        idx = np.argmin(diffs)
+        if diffs[idx] <= diff:
+            matched_freqs.append(f1)
+            matched_ints_1.append(i1)
+            matched_ints_2.append(int2[idx])
+
+    # Convertir a arrays
+    matched_freqs = np.array(matched_freqs)
+    matched_ints1 = np.array(matched_ints_1)
+    matched_ints2 = np.array(matched_ints_2)
+
+    return matched_freqs, matched_ints1, matched_ints2
+
+######################################
 
 def multi_gaussian(x, *params):
     """
