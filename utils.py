@@ -106,20 +106,18 @@ def get_noise(spectra, noise_regions):
 
 #############################
 
-def matching_peaks(freq1, int1, freq2, int2, tol):
+def matching_peaks_pair(freq1, int1, freq2, int2, tol):
 
-
-    diff = tol # frecuencia máxima de diferencia para considerar "coincidente"
     print("Threhshold of coincidence: ",tol)
     matched_freqs = []
     matched_ints_1 = []
     matched_ints_2 = []
 
     for f1, i1 in zip(freq1, int1):
-        # Buscar picos en spectrum deu cercanos a f1 (water peaks)
+        # Buscar picos en spectrum deu cercanos a f1 
         diffs = np.abs(freq2 - f1)
         idx = np.argmin(diffs)
-        if diffs[idx] <= diff:
+        if diffs[idx] <= tol:
             matched_freqs.append(f1)
             matched_ints_1.append(i1)
             matched_ints_2.append(int2[idx])
@@ -130,6 +128,37 @@ def matching_peaks(freq1, int1, freq2, int2, tol):
     matched_ints2 = np.array(matched_ints_2)
 
     return matched_freqs, matched_ints1, matched_ints2
+
+########################################
+
+def matching_peaks_three(freq1, int1, freq2, int2, freq3, int3, tol):
+
+    print("Threhshold of coincidence: ",tol)
+    matched_freqs = []
+    matched_ints_1 = []
+    matched_ints_2 = []
+    matched_ints_3 = []
+
+
+    for f1, i1 in zip(freq1, int1):
+        # Buscar picos en spectrum deu cercanos a f1 
+        diffs2 = np.abs(freq2 - f1)
+        diffs3 = np.abs(freq3 - f1)
+        idx2 = np.argmin(diffs2)
+        idx3 = np.argmin(diffs3)
+        if diffs2[idx2] <= tol and diffs3[idx3] <= tol:
+            matched_freqs.append(f1)
+            matched_ints_1.append(i1)
+            matched_ints_2.append(int2[idx2])
+            matched_ints_3.append(int3[idx3])
+           
+    # Convertir a arrays
+    matched_freqs = np.array(matched_freqs)
+    matched_ints1 = np.array(matched_ints_1)
+    matched_ints2 = np.array(matched_ints_2)
+    matched_ints3 = np.array(matched_ints_3)
+
+    return matched_freqs, matched_ints1, matched_ints2, matched_ints3
 
 ######################################
 
@@ -208,3 +237,9 @@ def auto_fit_multi_gaussian(x, y, height=None, distance=None, width_guess=0.5):
     y_fit = multi_gaussian(x, *popt)
 
     return popt, pcov, y_fit, n_peaks
+
+################################
+
+def symlog(x, linthresh=1e-3):
+    x = np.asarray(x, dtype=float)
+    return np.sign(x) * np.log10(1 + np.abs(x) / linthresh)
