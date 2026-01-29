@@ -71,7 +71,7 @@ fig.add_trace(go.Scatter(
     marker=dict(
         color="red",
         symbol="circle",
-        size=4,
+        size=7,
     ),
 ))
 
@@ -85,7 +85,7 @@ fig.add_trace(go.Scatter(
     marker=dict(
         color="yellow",
         symbol="diamond",
-        size=4,
+        size=7,
     ),
 ))
 
@@ -102,4 +102,4 @@ SO2_csv = pd.DataFrame({
     "Peak intensity +D2O": pd.Series(so2_over_matched_int_d_3),
 })
 
-SO2_csv.to_csv("SO2_peaks.csv")
+SO2_csv.to_csv("SO2_peaks.csv", index=False)
