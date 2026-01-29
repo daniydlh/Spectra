@@ -32,7 +32,7 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
         df = df.filter((pl.col(cols_to_fit[0]) > origin_cleaning_limits[0]) | (pl.col(cols_to_fit[1]) > origin_cleaning_limits[1]))
     
     # Removing rows with a 0 in columns to fit (optional)
-    if remove_zeros == True:
+    if remove_zeros is True:
         df = df.filter((pl.col(cols_to_fit[0]) != 0.) & (pl.col(cols_to_fit[1]) != 0.)) 
 
     # Creates a dictionary of precluster depending on range_list values. None = infinite.
@@ -74,22 +74,20 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
 
 ################################################################################################
 
-def write_model_info_and_plots(models, X, dir, plot_lims_tuple=None):
+def write_model_info_and_plots(models, X, df_ref, cols_to_fit, dir, plot_lims_tuple=None):
     
+    df_output_dict = {}
+
     for m in models:
+
         model_dir = f"{dir}/{m}"
-
-        if os.path.exists(model_dir):
-            shutil.rmtree(model_dir)
-
-        # Recreate empty directory
-        os.makedirs(model_dir)
-
+        print(models)
         # Create the directory (and any missing parent dirs) if it doesn't exist
         os.makedirs(model_dir, exist_ok=True)
 
         models[m].plot_interactive(X[m], lims=plot_lims_tuple, dir=f"{model_dir}/plot_{m}.html",)
-
-        for id in range(len(models[m].clusters_)):
-            models[m].write_cluster_dat(f"{model_dir}/{m}_cluster_{id}.dat", cluster_id=id)
-
+        df_output_dict[m] = models[m].write_df_output(df_ref, cols_to_fit)
+        
+        for cluster in models[m].clusters_:
+            models[m].write_cluster_dat(f"{model_dir}/{m}_cluster_{cluster['id']}.dat", cluster_id=cluster['id'])
+    return df_output_dict

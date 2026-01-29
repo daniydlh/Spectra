@@ -1,4 +1,5 @@
 from numpy import arctan
+import polars as pl
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -187,10 +188,10 @@ class LinearClusterer:
             if self.distance_type == "angular":
                     current_angle = self.current_angle_threshold(cluster_id)
 
-                    # Optional: stop if precision is already meaningless
+                    # Optional: Tell when angle reached max value
                     if current_angle >= self.angle_max and once is False:
                         once = True
-                        print(f"Stopping: angle threshold reached max at cluster {cluster_id}")
+                        print(f"Angle threshold reached max at cluster {cluster_id}")
 
             else:
                 current_angle = None
@@ -316,7 +317,7 @@ class LinearClusterer:
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=1200, height=800, lims=None, dir=None):
+    def plot_interactive(self, X, width=800, height=600, lims=None, dir=None):
             """
             Create an interactive visualization using Plotly
             
@@ -356,6 +357,12 @@ class LinearClusterer:
 
             # Plot points
             for label in unique_labels:
+
+                """
+                # Plot only a specific cluster
+                if label != 0 and label != 18:
+                    continue
+                """
                 mask = self.labels_ == label
                 cluster_points = X[mask]
 
@@ -552,6 +559,53 @@ class LinearClusterer:
             # --- points
             for x, y in cluster["points"]:
                 f.write(f"{x:.8e} {y:.8e}\n")
+
+    def write_df_output(self, df_input, cols_to_fit):
+        # Sort clusters by arctan
+        sorted_clusters = sorted(self.clusters_, key=lambda x: float(x['arctan']))
+        sorted_ids = [c['id'] for c in sorted_clusters]
+
+        # Build rows (keep numeric)
+        rows = []
+        for cluster in self.clusters_:
+
+            cluster_index = sorted_ids.index(cluster['id'])
+
+            for x_val, y_val in cluster["points"]:
+                rows.append({
+                    "x_key": f"{x_val:.8f}",
+                    "y_key": f"{y_val:.8f}",
+                    "cluster": cluster_index,
+                    "arctan2": np.arctan2(y_val, x_val)
+                })
+
+        # Create mapping DataFrame (numeric)
+        df_mapping = pl.DataFrame(rows)
+        print(df_mapping)
+        # Format input df keys for join (keep numeric for now)
+
+        df_input = df_input.with_columns([
+            pl.col(cols_to_fit[0]).map_elements(lambda x: f"{x:.8f}").alias("x_key"),
+            pl.col(cols_to_fit[1]).map_elements(lambda x: f"{x:.8f}").alias("y_key"),
+        ])
+
+        # Join
+        df_output = df_input.join(df_mapping, on=["x_key", "y_key"], how="left")
+
+        # Only after join: format columns for display or export
+        df_output = df_output.with_columns([
+            pl.col("x_key").map_elements(lambda x: f"{x:.8f}"),
+            pl.col("y_key").map_elements(lambda x: f"{x:.8f}"),
+            pl.col("arctan2").map_elements(lambda x: f"{x:.8f}"),
+        ])
+
+        return df_output
+
+
+
+
+
+
 """
 # Example usage and testing
 if __name__ == "__main__":

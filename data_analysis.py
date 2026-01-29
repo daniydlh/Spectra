@@ -117,4 +117,5 @@ plot_2d_int("plot_2d_water_deu.html", df_int['int_water'], df_int['int_deu'])
 plot_2d_int("plot_2d_water_deu_FFF.html", df_FFF['int_water'], df_FFF['int_deu'])
 plot_2d_ratio_int("plot_2d_ratio23_i2_FFF.html", df_FFF_rat["int_deu"], df_FFF_rat["int_water/int_deu"])
 """
-
+df_signals
+df_int.height
