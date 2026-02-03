@@ -1,0 +1,38 @@
+# =====================
+# Generated model data
+# =====================
+models/
+Models/
+
+# RANSAC outputs
+**/RANSAC/
+**/model_df_*/
+
+# Binary / data files
+*.dat
+*.npy
+*.npz
+*.h5
+*.csv
+
+
+# Logs and temp files
+*.log
+*.tmp
+
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+
+# =====================
+# OS-specific
+# =====================
+.DS_Store
+Thumbs.db

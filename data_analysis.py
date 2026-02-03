@@ -66,7 +66,7 @@ df_h2o_dec_inv = pl.concat([df_groups_incr_decrs["=="],
                             df_groups_incr_decrs["+-"], 
                             df_groups_incr_decrs["++"]]).select(df_groups_incr_decrs["--"].columns[:4])
 df_h2o_dec_inv.height
-df_h2o_dec.height
+df_h2o_dec
 df_groups_incr_decrs["00"].height
 fft_df("data/echo.acs", df_h2o_dec_inv, sep="\t", decimals=8)
 fft_df("data/lines_decreased_with_h2o", df_h2o_dec_inv, sep="\t", decimals=8)
