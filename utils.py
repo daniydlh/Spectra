@@ -471,15 +471,15 @@ def int_is_0(df):
     return df_is0, df_count0
 
 ################################
-def plot_base_peaks(output, x_base, y_base, x_peak, y_peak, sigma):
+def plot_base_peaks(output, df, peaks_array, freq, int_col, sigma):
 
     fig = go.Figure()
     # Base spectrum (line)
     fig.add_trace(go.Scatter(
-        x=x_base,
-        y=y_base,
+        x=df[freq].to_numpy(),
+        y=df[int_col].to_numpy(),
         mode="lines",
-        name="base",
+        name=int_col,
         opacity=1.0,
         line=dict(color="blue", width=1),
     ))
@@ -490,10 +490,10 @@ def plot_base_peaks(output, x_base, y_base, x_peak, y_peak, sigma):
         shapes=[
             dict(
                 type="line",
-                x0=min(x_base),
-                x1=max(x_base),
-                y0=3*sigma,
-                y1=3*sigma,
+                x0=min(df[freq].to_numpy()),
+                x1=max(df[freq].to_numpy()),
+                y0=sigma,
+                y1=sigma,
                 line=dict(color="black", width=2, dash="dash"),
             )
         ]
@@ -501,10 +501,10 @@ def plot_base_peaks(output, x_base, y_base, x_peak, y_peak, sigma):
 
     # SO2 peaks
     fig.add_trace(go.Scatter(
-        x=x_peak,
-        y=y_peak,
+        x=peaks_array[int_col][:,0],
+        y=peaks_array[int_col][:,1],
         mode="markers",
-        name="peaks",
+        name=f"{int_col} peaks",
         opacity=1.,
         marker=dict(
             color="red",
@@ -773,9 +773,9 @@ def detect_peaks(df, prominence=0.0):
 
 ####################################
 
-def noise_rm_all(df: pl.DataFrame, sigma_list: list = None) -> pl.DataFrame:
+def noise_rm_all(df: pl.DataFrame, sigma_list: list = None, detection_mult=3) -> pl.DataFrame:
     """
-    Zero out values below 3*sigma for all columns except the first one.
+    Zero out values below detection_mult*sigma for all columns except the first one.
     
     Parameters:
         df: Polars DataFrame, first column is freq, remaining are intensities.
@@ -785,26 +785,27 @@ def noise_rm_all(df: pl.DataFrame, sigma_list: list = None) -> pl.DataFrame:
     Returns:
         Polars DataFrame with noise removed.
     """
-    sigma3 = []
+    detection_limits = []
     new_cols = []
     for i, col in enumerate(df.columns[1:]):
         # Determine sigma
         if sigma_list:
             sigma = sigma_list[i]
-            sigma3.append(3*sigma_list[i])
+            detection_limits.append(detection_mult*sigma_list[i])
 
         else:
+            print("No sigma values found, using median as sigma...")
             sigma = df[col].median()
-            sigma3.append(3*sigma)
+            detection_limits.append(detection_mult*sigma)
         
-        print(f"{col} 3sigma = {3*sigma}")
+        #print(f"{col} detection limits = {detection_mult*sigma}")
         
         # Apply noise removal
-        new_col = pl.when(pl.col(col) < 3*sigma).then(0).otherwise(pl.col(col)).alias(col)
+        new_col = pl.when(pl.col(col) < detection_mult*sigma).then(0).otherwise(pl.col(col)).alias(col)
         new_cols.append(new_col)
     
     # Return new DataFrame with first column unchanged and list of sigmas for each col
-    return df.select([df.columns[0]] + new_cols), sigma3
+    return df.select([df.columns[0]] + new_cols), detection_limits
 
 ####################################
 

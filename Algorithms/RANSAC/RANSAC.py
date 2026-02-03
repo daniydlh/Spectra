@@ -1,4 +1,3 @@
-from numpy import arctan
 import polars as pl
 import numpy as np
 import matplotlib.pyplot as plt
@@ -230,7 +229,9 @@ class LinearClusterer:
             
             if len(remaining_indices) == 0:
                 break
-        self.unnassigned = remaining_indices
+        self.unassigned = remaining_indices
+        self.unassigned_vals = [X[i] for i in remaining_indices]
+
         
         return self
     
@@ -317,7 +318,7 @@ class LinearClusterer:
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=800, height=600, lims=None, dir=None):
+    def plot_interactive(self, X, width=800, height=600, lims=None, model_path=None):
             """
             Create an interactive visualization using Plotly
             
@@ -504,7 +505,7 @@ class LinearClusterer:
 
             # Show and save
             fig.show()
-            fig.write_html(dir, include_plotlyjs="cdn")
+            fig.write_html(model_path, include_plotlyjs="cdn")
         
     def get_cluster_info(self):
         """
@@ -539,11 +540,12 @@ class LinearClusterer:
         Write cluster dictionary to a .dat file with metadata header
         and x y point list.
         """
+        
         cluster = self.clusters_[cluster_id]
 
         with open(filename, "w") as f:
             # --- metadata
-            f.write(f"id {int(cluster['id'])}\n")
+            f.write(f"population ranking {int(cluster['id'])}\n")
             f.write(f"slope {float(cluster['slope'])}\n")
             f.write(f"intercept {float(cluster['intercept'])}\n")
             f.write(f"r2 {float(cluster['r2'])}\n")
@@ -560,51 +562,93 @@ class LinearClusterer:
             for x, y in cluster["points"]:
                 f.write(f"{x:.8e} {y:.8e}\n")
 
-    def write_df_output(self, df_input, cols_to_fit):
-        # Sort clusters by arctan
-        sorted_clusters = sorted(self.clusters_, key=lambda x: float(x['arctan']))
-        sorted_ids = [c['id'] for c in sorted_clusters]
+    def write_df_output(self, df_input: pl.DataFrame, cols_to_fit, create_file=False, selected_cols=None, sort_by_arctan=False, model_name=None,  model_path=None):
+        
+        # ------------------------------------------------------------------
+        # 1. Optional: Sort clusters by arctan and build index mapping
+        # ------------------------------------------------------------------
+        if sort_by_arctan is True:
+            sorted_clusters = sorted(self.clusters_, key=lambda c: float(c["arctan"]))
+            sorted_ids = [c["id"] for c in sorted_clusters]
+        else:
+            sorted_clusters = sorted(self.clusters_, key=lambda c: float(c["id"]))
+            sorted_ids = [c["id"] for c in sorted_clusters]
 
-        # Build rows (keep numeric)
-        rows = []
+        
+        # ------------------------------------------------------------------
+        # 2. Build mapping table (NUMERIC, rounded once) - DEDUPLICATED
+        # ------------------------------------------------------------------
+        # Use a dict to deduplicate: last assignment wins
+        mapping_dict = {}
+        
+        # Add cluster points
         for cluster in self.clusters_:
-
-            cluster_index = sorted_ids.index(cluster['id'])
-
+            cluster_index = sorted_ids.index(cluster["id"])
             for x_val, y_val in cluster["points"]:
-                rows.append({
-                    "x_key": f"{x_val:.8f}",
-                    "y_key": f"{y_val:.8f}",
+                key = (round(x_val, 8), round(y_val, 8))
+                mapping_dict[key] = {
                     "cluster": cluster_index,
-                    "arctan2": np.arctan2(y_val, x_val)
-                })
-
-        # Create mapping DataFrame (numeric)
+                    "arctan2": np.arctan2(y_val, x_val),
+                }
+        
+        # Add unassigned points (may overwrite cluster assignments if duplicates exist)
+        for x_val_un, y_val_un in self.unassigned_vals:
+            key = (round(x_val_un, 8), round(y_val_un, 8))
+            mapping_dict[key] = {
+                "cluster": -1,
+                "arctan2": np.arctan2(y_val_un, x_val_un),
+            }
+        
+        # Convert dict to DataFrame
+        rows = [
+            {
+                "x_key": k[0],
+                "y_key": k[1],
+                "cluster": v["cluster"],
+                "arctan2": v["arctan2"],
+            }
+            for k, v in mapping_dict.items()
+        ]
         df_mapping = pl.DataFrame(rows)
-        print(df_mapping)
-        # Format input df keys for join (keep numeric for now)
-
+        
+        # ------------------------------------------------------------------
+        # 3. Prepare input dataframe (numeric keys)
+        # ------------------------------------------------------------------
         df_input = df_input.with_columns([
-            pl.col(cols_to_fit[0]).map_elements(lambda x: f"{x:.8f}").alias("x_key"),
-            pl.col(cols_to_fit[1]).map_elements(lambda x: f"{x:.8f}").alias("y_key"),
+            pl.col(cols_to_fit[0]).round(8).alias("x_key"),
+            pl.col(cols_to_fit[1]).round(8).alias("y_key"),
         ])
-
-        # Join
-        df_output = df_input.join(df_mapping, on=["x_key", "y_key"], how="left")
-
-        # Only after join: format columns for display or export
+        
+        # ------------------------------------------------------------------
+        # 4. Join
+        # ------------------------------------------------------------------
+        df_output = df_input.join(
+            df_mapping,
+            on=["x_key", "y_key"],
+            how="left"
+        )
+        
+        # ------------------------------------------------------------------
+        # 5. OPTIONAL: format for display / export only
+        # ------------------------------------------------------------------
         df_output = df_output.with_columns([
-            pl.col("x_key").map_elements(lambda x: f"{x:.8f}"),
-            pl.col("y_key").map_elements(lambda x: f"{x:.8f}"),
-            pl.col("arctan2").map_elements(lambda x: f"{x:.8f}"),
+            pl.col("x_key").cast(pl.Utf8),
+            pl.col("y_key").cast(pl.Utf8),
+            pl.when(pl.col("arctan2").is_not_null())
+            .then(pl.col("arctan2").round(8).cast(pl.Utf8))
+            .otherwise(pl.lit(None))
+            .alias("arctan2"),
         ])
 
+        # ------------------------------------------------------------------
+        # 6. OPTIONAL: create .csv file
+        # ------------------------------------------------------------------
+        if create_file is True and selected_cols is not None and model_name is not None and model_path is not None:
+            df_output.select(selected_cols).filter(pl.col("cluster")
+                    .is_not_null()).sort("freq").write_csv(model_path,float_precision=8)
+
+        
         return df_output
-
-
-
-
-
 
 """
 # Example usage and testing

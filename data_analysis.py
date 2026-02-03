@@ -23,19 +23,22 @@ spectra_so2 = pl.read_csv("data/2025-10-19-SO2_2300k.fft",
                         has_header=True, 
                         skip_rows=14)
 
-
-sigma_list = [4e-6, 4e-6, 4e-6]
-
 # Data construction: 
-# --- df_signals: all data above noise
+# --- df_all: all data
+# --- df_signals: data above noise
 # --- df_int: all peaks and the respective intensity in the others spectra
+
+sigma_list = [10e-6, 20e-6, 20e-6]
+
 df_all = concat_cols_on_freq([spectra_so2, spectra_water, spectra_deu],["so2", "water", "deu"])
-df_signals, sigma3_list = noise_rm_all(df_all)
+df_signals, detection_limits = noise_rm_all(df_all, sigma_list, detection_mult=2)
+print(detection_limits)
+df_signals.height
 peak_dict = detect_peaks(df_signals)
 peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
 all_peaks = combine_unique_freqs(peak_dict)
-df_int = get_int_at_peaks_AIopt(all_peaks,df_signals,return_df=True)
-
+df_int = get_int_at_peaks_AIopt(all_peaks, df_signals, return_df=True)
+df_int.height
 #Add ratios and arctg2 features
 df_int = ratio_arc_cols(df_int, ratio=True, arctan2=True)
 df_signals = ratio_arc_cols(df_signals, ratio=True, arctan2=True)
@@ -46,6 +49,7 @@ df_int = unique_by_freq_keep_max3(df_int, "freq", "int_so2", "int_water", "int_d
 #Grouping by 
 df_int, df_int_bool = int_is_peak(df_int, peak_array, 0.05)
 df_int, df_int_groups_incr_decr = increase_or_decrease(df_int, 0.1)
+
 df_groups_ispeak = groups_ispeak(df_int)
 df_groups_incr_decrs = groups_incr_decr(df_int)
 df_TTT = df_groups_ispeak["TTT"]
@@ -56,22 +60,34 @@ df_two_third_decr
 #print(df_two_third_decr.filter((pl.col("freq") - 5555.7).abs() < 0.1))
 df_TTT, df_TTT_count_incr_decr = increase_or_decrease(df_TTT, 0.05)
 df_h2o_dec = pl.concat([df_groups_incr_decrs["--"], df_groups_incr_decrs["-0"], df_groups_incr_decrs["-+"], df_groups_incr_decrs["-="]]).select(df_groups_incr_decrs["--"].columns[:4])
-df_h2o_dec_inv = pl.concat([df_groups_incr_decrs["=="], df_groups_incr_decrs["=0"], df_groups_incr_decrs["+0"], 
-                            df_groups_incr_decrs["+-"], df_groups_incr_decrs["00"], df_groups_incr_decrs["0-"], 
-                            df_groups_incr_decrs["0+"], df_groups_incr_decrs["++"]]).select(df_groups_incr_decrs["--"].columns[:4])
+df_h2o_dec_inv = pl.concat([df_groups_incr_decrs["=="], 
+                            df_groups_incr_decrs["=0"], 
+                            df_groups_incr_decrs["+0"], 
+                            df_groups_incr_decrs["+-"], 
+                            df_groups_incr_decrs["++"]]).select(df_groups_incr_decrs["--"].columns[:4])
 df_h2o_dec_inv.height
 df_h2o_dec.height
-fft_df("lines_to_remove.dat", df_h2o_dec_inv, sep="\t", decimals=5)
+df_groups_incr_decrs["00"].height
+fft_df("data/echo.acs", df_h2o_dec_inv, sep="\t", decimals=8)
+fft_df("data/lines_decreased_with_h2o", df_h2o_dec_inv, sep="\t", decimals=8)
+
+
+
+
+# Check single intensity with a tolerance
+lines = df_int.filter((pl.col("freq") - 5057.7).abs() < 0.1)
+lines
+
+plot_base_peaks("plot_so2_peaks.html", df_all, peak_array, 'freq', 'int_so2', detection_limits[0])
+plot_base_peaks("plot_h2o_peaks.html", df_all, peak_array, 'freq', 'int_water', detection_limits[1])
+plot_base_peaks("plot_d2o_peaks.html", df_all, peak_array, 'freq', 'int_deu', detection_limits[2])
+
+
 
 # Temporarily show all rows
 with pl.Config():
     pl.Config.set_tbl_rows(-1)  # -1 means show all rows
     print(df_int_groups_incr_decr)
-
-df_int_groups_incr_decr
-# Check single intensity with a tolerance
-lines = df_int.filter((pl.col("freq") - 5555.7).abs() < 0.005)
-lines
 
 """
 df_int_wd = df_int.select([pl.col("int_water"), pl.col("int_deu")])
@@ -96,9 +112,9 @@ df.filter((pl.col("int_water/int_deu") >1.5)).height
 
 
 # Data plotting
-plot_base_peaks("plot_so2_peaks.html", df_all['freq'], df_all['int_so2'], peak_array['int_so2'][:,0], peak_array['int_so2'][:,1], sigma_list[0])
-plot_base_peaks("plot_h2o_peaks.html", df_all['freq'], df_all['int_water'], peak_array['int_water'][:,0], peak_array['int_water'][:,1], sigma_list[0])
-plot_base_peaks("plot_d2o_peaks.html", df_all['freq'], df_all['int_deu'], peak_array['int_deu'][:,0], peak_array['int_deu'][:,1], sigma_list[0])
+plot_base_peaks("plot_so2_peaks.html", df_all, peak_array, 'freq', 'int_so2', sigma3_list[0])
+plot_base_peaks("plot_h2o_peaks.html", df_all, peak_array, 'freq', 'int_water', sigma3_list[1])
+plot_base_peaks("plot_d2o_peaks.html", df_all, peak_array, 'freq', 'int_deu', sigma3_list[2])
 
 plot_3d("plot_3d_int.html", df_int[:,1], df_int[:,2], df_int[:,3], min=0.0, max=0.001)
 plot_3d("plot_3d_rat.html", df_int[:,4], df_int[:,5], df_int[:,6])

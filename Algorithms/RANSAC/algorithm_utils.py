@@ -1,14 +1,17 @@
 
+import shutil
 import polars as pl
 from Algorithms.RANSAC.RANSAC import LinearClusterer
 import numpy as np
 import os
+from pathlib import Path
 import shutil
+
 
 def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
                                  ref_col_precluster, range_list, max_it_list,
                                  min_samples_list, max_clusters_list, euc_threshold_list, ang_threshold_list,
-                                 angle_growth_list, angle_max, origin_cleaning_limits=None, remove_zeros=True, 
+                                 angle_growth_list, angle_max, origin_cleaning_limits=None, remove_zeros=False, 
                                  force_origin=False, distance_type='euclidean'):
     
     # Check if arguments are coherent
@@ -54,7 +57,6 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
         X = np.column_stack((x,y))
 
         # Create, fit clusterer and store the returned object in a dictionary
-
         clusterer = LinearClusterer(
             distance_threshold=euc_threshold_list[j],
             angle_threshold=ang_threshold_list[j],
@@ -66,6 +68,8 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
             force_origin=force_origin,
             distance_type=distance_type
         )
+        
+        print(f"Clustering algorithm iniciated for model_{precluster_key}")
         models_preclusters_dict[f"model_{precluster_key}"] = clusterer.fit(X) # .fit() returns self so clusterer is equal to model = clusterer.fit()
         X_dict[f"model_{precluster_key}"] = X 
 
@@ -74,20 +78,76 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
 
 ################################################################################################
 
-def write_model_info_and_plots(models, X, df_ref, cols_to_fit, dir, plot_lims_tuple=None):
+
+def create_output(df, model, cols):
+
+        output_file = f"output_{model}.csv"
+        df.select(cols).filter(pl.col("cluster").is_not_null()).write_csv(output_file)
+        
+        info_lines = [
+            f"# Model: {model}",
+            f"# Number of clusters: {len(model.clusters_)}",
+            "# Clusters: " + ", f".join([f"{c['id']} ({len(c['points'])} transitions)" for c in model.clusters_]),
+            f"# Unassigned transitions: {len(model.unassigned)}"
+        ]
+
+        with open(output_file, "r") as f:
+            csv_content = f.read()
+        
+        with open(output_file, "w") as f:
+            for line in info_lines:
+                f.write(line + "\n")
+            f.write(csv_content)
+
+
+################################################################################################
+
+def write_model_info_and_plots(models, X, df_ref, cols_to_fit, rltv_path, plot_lims_tuple=None, 
+                              interactive_plot=False, cluster_info=True, create_full_output_file=True, 
+                              sort_by_arctan=False):
     
     df_output_dict = {}
-
+    
     for m in models:
 
-        model_dir = f"{dir}/{m}"
-        print(models)
-        # Create the directory (and any missing parent dirs) if it doesn't exist
-        os.makedirs(model_dir, exist_ok=True)
+        out_path = Path(rltv_path) / m
 
-        models[m].plot_interactive(X[m], lims=plot_lims_tuple, dir=f"{model_dir}/plot_{m}.html",)
-        df_output_dict[m] = models[m].write_df_output(df_ref, cols_to_fit)
+        # If directory exists, ask user before overwriting
+        if out_path.exists():
+            answer = input(f"The directory '{out_path}' already exists. Overwrite? [y/N]: ").strip().lower()
+            if answer == 'y':
+                shutil.rmtree(out_path)
+                print(f"Directory '{out_path}' has been overwritten.")
+            else:
+                print(f"Skipping model '{m}' because directory exists.")
+                continue  # skip this model
+
+        out_path.mkdir(parents=True, exist_ok=True)
+
+        if interactive_plot is True:
+            print(f"Interactive plot for {m}...")
+            models[m].plot_interactive(X[m], lims=plot_lims_tuple, model_path=f"{out_path}/plot_{m}.html",)
+        else:
+            print(f"Plot for {m}...")
+            models[m].plot(X[m])
         
-        for cluster in models[m].clusters_:
-            models[m].write_cluster_dat(f"{model_dir}/{m}_cluster_{cluster['id']}.dat", cluster_id=cluster['id'])
+        if cluster_info is True:
+
+            print(f"Writing cluster information for {m}...")
+
+            if sort_by_arctan is True:
+                sorted_clusters = sorted(models[m].clusters_, key=lambda c: float(c["arctan"]))
+                cluster_id_to_index = {c["id"]: idx for idx, c in enumerate(sorted_clusters)}
+            else:
+                sorted_clusters = sorted(models[m].clusters_, key=lambda c: float(c["id"]))
+                cluster_id_to_index = {c["id"]: idx for idx, c in enumerate(sorted_clusters)}
+
+            for cluster in models[m].clusters_:
+                cluster_index = cluster_id_to_index[cluster["id"]]
+                models[m].write_cluster_dat(f"{out_path}/{m}_cluster_{cluster_index}.dat", cluster_id=cluster_index)
+
+        print(f"Writing full model clusterization for {m}...")
+        cols = ['freq', 'int_water', 'int_deu', 'cluster']  # choose columns you want
+        df_output_dict[m] = models[m].write_df_output(df_ref, cols_to_fit, create_file=create_full_output_file, selected_cols=cols, sort_by_arctan=sort_by_arctan, model_name=m, model_path=f"{out_path}/full_output_{m}")        
+
     return df_output_dict
