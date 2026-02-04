@@ -3,23 +3,15 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 import time
+from data_analysis import df_signals
+
 
 ti = time.time()
 
-# --------------------------------------------
-# 1 Cargar o crear tu DataFrame de Polars
-# --------------------------------------------
-from 01_data_analysis import df_signals
-
-df_signals
-df_filtered = df_signals.filter(
-    (pl.col("int_water") >= 0.00001) | (pl.col("int_deu") >= 0.00001)
-)
-df_filtered.height
 
 # Intensidades
-y1 = df_filtered["int_water"].to_numpy()  # señal 1
-y2 = df_filtered["int_deu"].to_numpy()    # señal 2
+y1 = df_signals["int_water"].to_numpy()  # señal 1
+y2 = df_signals["int_deu"].to_numpy()    # señal 2
 
 # Construimos la matriz para clustering
 Y = np.column_stack([y1, y2])  # cada fila = (int_water, int_deu)
@@ -27,7 +19,7 @@ Y = np.column_stack([y1, y2])  # cada fila = (int_water, int_deu)
 # --------------------------------------------
 # 2 Ajustar Gaussian Mixture Model (GMM)
 # --------------------------------------------
-n_comp = 3  # número de clusters
+n_comp = 40  # número de clusters
 gmm = GaussianMixture(
     n_components=n_comp,          # K, número de Gaussianas
     covariance_type='full',  # tipo de covarianza: 'full', 'diag', 'tied', 'spherical'

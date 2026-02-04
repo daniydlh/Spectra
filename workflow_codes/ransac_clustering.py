@@ -1,4 +1,4 @@
-from 01_data_analysis import df_signals, df_int
+from data_analysis import df_signals, df_int
 from Algorithms.RANSAC.algorithm_utils import precluster_and_cluster_RANSAC, write_model_info_and_plots
 import polars as pl
 import numpy as np
