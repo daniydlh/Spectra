@@ -367,7 +367,7 @@ if __name__ == "__main__":
     gmm_clusterer.plot_interactive(
         col_names=['Intensidad Water', 'Intensidad Deuterio'],
         n_std=2,
-        save_path='gmm_clustering.html',
+        save_path='models/GMM/gmm_clustering.html',
         show_ellipses=True,
         show_centers=True,
         point_size=6,
