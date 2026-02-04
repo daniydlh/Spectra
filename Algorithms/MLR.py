@@ -1,7 +1,7 @@
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
-from data_analysis import (df_signals, df_int_wd_clean)
+from 01_data_analysis import (df_signals, df_int_wd_clean)
 import plotly.graph_objects as go
 
 

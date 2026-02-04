@@ -1,12 +1,11 @@
 # =====================
 # Generated model data
 # =====================
-models/
-Models/
+data/
+groups_csv/
 
 # RANSAC outputs
-**/RANSAC/
-**/model_df_*/
+
 
 # Binary / data files
 *.dat
@@ -14,7 +13,8 @@ Models/
 *.npz
 *.h5
 *.csv
-
+*.pptx
+*.png
 
 # Logs and temp files
 *.log

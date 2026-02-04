@@ -369,7 +369,7 @@ class LinearClusterer:
 
                 if label == -1:
                     # Unassigned points
-                    fig.add_trace(go.Scatter(
+                    fig.add_trace(go.Scattergl(
                         x=cluster_points[:, 0],
                         y=cluster_points[:, 1],
                         mode='markers',
@@ -398,7 +398,7 @@ class LinearClusterer:
 
                     color = cluster_colors[label]
 
-                    fig.add_trace(go.Scatter(
+                    fig.add_trace(go.Scattergl(
                         x=cluster_points[:, 0],
                         y=cluster_points[:, 1],
                         mode='markers',
@@ -406,7 +406,7 @@ class LinearClusterer:
                         marker=dict(
                             size=10,
                             color=color,
-                            opacity=0.9,
+                            opacity=1.0,
                             line=dict(width=1, color='white')
                         ),
                         text=[f'Cluster {label}<br>X: {x:.5f}<br>Y: {y:.5f}<br>{equation}<br>arctan: {arctan:.5f}' for x, y in cluster_points],
@@ -421,7 +421,7 @@ class LinearClusterer:
 
                 if np.isinf(slope):
                     # Vertical line
-                    fig.add_trace(go.Scatter(
+                    fig.add_trace(go.Scattergl(
                         x=[intercept, intercept],
                         y=[y_min - y_padding, y_max + y_padding],
                         mode='lines',
@@ -434,12 +434,12 @@ class LinearClusterer:
                     y_line = slope * x_range + intercept
                     equation = f'y = {slope:.3f}x + {intercept:.2f}'
 
-                    fig.add_trace(go.Scatter(
+                    fig.add_trace(go.Scattergl(
                         x=x_range,
                         y=y_line,
                         mode='lines',
                         name=f'Line {cluster["id"]}',
-                        opacity=0.75,
+                        opacity=0.4,
                         line=dict(color=color, width=2, dash='dash'),
                         hovertemplate=f'<b>Cluster {cluster["id"]}</b><br>{equation}<br><extra></extra>',
                         showlegend=False
@@ -504,9 +504,13 @@ class LinearClusterer:
                 fig.update_layout(showlegend=False)
 
             # Show and save
-            fig.show()
-            fig.write_html(model_path, include_plotlyjs="cdn")
-        
+            #fig.show()
+            fig.write_html(
+                model_path,
+                include_plotlyjs="cdn",
+                full_html=True,
+                auto_open=False
+            )        
     def get_cluster_info(self):
         """
         Get information about each cluster
