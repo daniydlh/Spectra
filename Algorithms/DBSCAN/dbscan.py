@@ -457,8 +457,8 @@ if __name__ == "__main__":
     ti = time.time()
     
     # Prepare data
-    y1 = df_filt1["int_water"].to_numpy()
-    y2 = df_filt1["int_deu"].to_numpy()
+    y1 = df_signals["int_water"].to_numpy()
+    y2 = df_signals["int_deu"].to_numpy()
     X = np.column_stack([y1, y2])
     
     print("="*70)

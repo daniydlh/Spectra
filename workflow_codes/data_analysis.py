@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from utils import (noise_rm_all, concat_cols_on_freq, detect_peaks, combine_unique_freqs, 
                 peaks_dict_to_arrays, get_int_at_peaks_AIopt, plot_3d,
-                ratio_arc_cols, plot_base_peaks, plot_2d_ratio_int,
+                ratio_arc_cols, plot_spectra, plot_2d_ratio_int,
                 plot_2d_int, int_is_peak, groups_ispeak, unique_by_freq_keep_max3, 
                 fft_arr, fft_df, increase_or_decrease, plot_histogram_array, 
                 plot_xy_by_ratio_ranges, make_ratio_ranges, groups_incr_decr,
@@ -73,22 +73,20 @@ df_groups_incr_decrs
 
 
 
-
 # Check single intensity with a tolerance
 lines = df_int.filter((pl.col("freq") - 5057.7).abs() < 0.1)
-lines
-"""
-plot_base_peaks("spectra/plot_so2_peaks.html", df_all, peak_array, 'freq', 'int_so2', detection_limits[0])
-plot_base_peaks("spectra/plot_h2o_peaks.html", df_all, peak_array, 'freq', 'int_water', detection_limits[1])
-plot_base_peaks("spectra/plot_d2o_peaks.html", df_all, peak_array, 'freq', 'int_deu', detection_limits[2])
-"""
+
+plot_spectra("spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=False, show_threshold=False)
+plot_spectra("spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1],  ylims=[-0.5,5.9], show_peaks=False, show_threshold=False, save_pdf=True, save_html=False)
+plot_spectra("spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
 
 
+""""
 # Temporarily show all rows
 with pl.Config():
     pl.Config.set_tbl_rows(-1)  # -1 means show all rows
     print(df_int_groups_incr_decr)
-
+"""
 """
 df_int_wd = df_int.select([pl.col("int_water"), pl.col("int_deu")])
 df_int_wd_clean = df_int_wd.filter((pl.col("int_water") != 0) & (pl.col("int_deu") != 0))
@@ -133,5 +131,3 @@ plot_2d_int("plot_2d_water_deu.html", df_int['int_water'], df_int['int_deu'])
 plot_2d_int("plot_2d_water_deu_FFF.html", df_FFF['int_water'], df_FFF['int_deu'])
 plot_2d_ratio_int("plot_2d_ratio23_i2_FFF.html", df_FFF_rat["int_deu"], df_FFF_rat["int_water/int_deu"])
 """
-df_signals
-df_int.height

@@ -471,51 +471,128 @@ def int_is_0(df):
     return df_is0, df_count0
 
 ################################
-def plot_base_peaks(output, df, peaks_array, freq, int_col, sigma):
+
+def plot_spectra(
+    output,
+    df,
+    peaks_array,
+    freq,
+    int_col,
+    sigma=None,
+    show_threshold=True,
+    show_peaks=True,
+    xlims=None,
+    ylims=None,
+    save_pdf=False,
+    save_html=False
+):
 
     fig = go.Figure()
-    # Base spectrum (line)
+
+    # Base spectrum
     fig.add_trace(go.Scatter(
         x=df[freq].to_numpy(),
-        y=df[int_col].to_numpy(),
+        y=df[int_col].to_numpy()*1000,
         mode="lines",
         name=int_col,
-        opacity=1.0,
-        line=dict(color="blue", width=1),
+        line=dict(
+            color="blue",
+            width=2.2
+        )
     ))
 
-    fig.update_layout(
-        xaxis_title='Frequency',
-        yaxis_title='Intensity',
-        shapes=[
-            dict(
-                type="line",
-                x0=min(df[freq].to_numpy()),
-                x1=max(df[freq].to_numpy()),
-                y0=sigma,
-                y1=sigma,
-                line=dict(color="black", width=2, dash="dash"),
+    # Optional peak markers
+    if show_peaks and peaks_array is not None:
+        fig.add_trace(go.Scatter(
+            x=peaks_array[int_col][:, 0],
+            y=peaks_array[int_col][:, 1]*1000,
+            mode="markers",
+            name=f"{int_col} peaks",
+            marker=dict(
+                color="crimson",
+                symbol="circle",
+                size=7,
+                line=dict(width=0.8, color="black")
             )
-        ]
+        ))
+
+    # Optional noise threshold
+    if show_threshold and sigma is not None:
+        fig.add_shape(
+            type="line",
+            x0=df[freq].min(),
+            x1=df[freq].max(),
+            y0=sigma*1000,
+            y1=sigma*1000,
+            line=dict(
+                color="gray",
+                width=2,
+                dash="dash"
+            )
+        )
+
+    # Layout styling (paper-ready)
+    fig.update_layout(
+        width=900,
+        height=550,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(
+            family="Times New Roman",
+            size=20,
+            color="black"
+        ),
+        xaxis=dict(
+            title=dict(text="Frequency (MHz)", font=dict(size=26)),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.15)",
+            gridwidth=1,
+            ticks="outside",
+            tickwidth=2,
+            ticklen=8,
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            tickfont=dict(size=22)
+        ),
+        yaxis=dict(
+            title=dict(text="Intensity (µV)", font=dict(size=26)),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.15)",
+            gridwidth=1,
+            ticks="outside",
+            tickwidth=2,
+            ticklen=8,
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            tickfont=dict(size=22)
+        ),
+        legend=dict(
+            font=dict(size=20),
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1.0
+        ),
+        margin=dict(l=90, r=30, t=40, b=80)
     )
 
-    # SO2 peaks
-    fig.add_trace(go.Scatter(
-        x=peaks_array[int_col][:,0],
-        y=peaks_array[int_col][:,1],
-        mode="markers",
-        name=f"{int_col} peaks",
-        opacity=1.,
-        marker=dict(
-            color="red",
-            symbol="circle",
-            size=4,
-        ),
-    ))
+    if xlims is not None:
+        fig.update_xaxes(range=[xlims[0], xlims[1]])
 
-    fig.write_html(output, include_plotlyjs="cdn")  # archivo interactivo
+    if ylims is not None:
+        fig.update_yaxes(range=[ylims[0], ylims[1]])
+
+    if save_pdf is True:
+        fig.write_image(f"{output}.pdf",format="pdf",width=1500,height=550,scale=3)
+
+    if save_html is True:
+        fig.write_html(f"{output}.html", include_plotlyjs="cdn")
+
     fig.show()
-    return
+
 
 ################################
 
