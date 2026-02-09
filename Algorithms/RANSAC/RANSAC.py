@@ -46,16 +46,43 @@ class LinearClusterer:
         # Distance formula: |ax + by + c| / sqrt(a^2 + b^2)
         distances = np.abs(a * points[:, 0] + b * points[:, 1] + c) / np.sqrt(a**2 + b**2)
         return distances
-    
+    """
     def angular_distance(self, points, slope):
-        """
-        Angular distance between points and a line through the origin
-        """
+        
+        # Angular distance between points and a line through the origin
+        
         theta_points = np.arctan2(points[:, 1], points[:, 0])
         theta_line = np.arctan(slope)
         dtheta = np.abs(theta_points - theta_line)
         return np.minimum(dtheta, np.pi - dtheta)
-    
+    """
+    def angular_distance(self, points, slope):
+        """
+        # Angular distance between points and a line direction
+        """
+        # Line direction vector
+        if np.isinf(slope):
+            v = np.array([0.0, 1.0])
+        else:
+            v = np.array([1.0, slope])
+
+        v /= np.linalg.norm(v)
+
+        # Point vectors
+        norms = np.linalg.norm(points, axis=1)
+        valid = norms > 0
+
+        cos_theta = np.zeros(len(points))
+        cos_theta[valid] = np.abs(
+            (points[valid] @ v) / norms[valid]
+        )
+
+        # Numerical safety
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+
+        return np.arccos(cos_theta)
+
+
     def current_angle_threshold(self, cluster_id):
         theta = self.angle_threshold * (1 + self.angle_growth * cluster_id)
         return min(theta, self.angle_max)
@@ -126,7 +153,6 @@ class LinearClusterer:
             if self.distance_type =='angular':
                 distances = self.angular_distance(X, slope)
                 inlier_mask = distances < self.angle_threshold
-                
             else:
                 # Handle vertical lines
                 if np.isinf(slope):
@@ -135,8 +161,9 @@ class LinearClusterer:
                     distances = self.point_to_line_distance(X, slope, intercept)
                 # Find inliers
                 inlier_mask = distances < self.distance_threshold
+
             inliers = X[inlier_mask]
-            
+
             # Update best model if this is better
             if len(inliers) > len(best_inliers):
                 best_inliers = inliers
@@ -147,6 +174,7 @@ class LinearClusterer:
         # Refit with all inliers
         if len(best_inliers) >= self.min_samples:
             best_slope, best_intercept = self.fit_line(best_inliers)
+            inlier_distance = distances[best_inlier_mask]
 
             # Compute R_2 with best slope and intercept
             y_pred = best_slope * best_inliers[:,0] + best_intercept
@@ -155,9 +183,9 @@ class LinearClusterer:
             ss_tot = np.sum((best_inliers[:,1] - y_mean)**2)     # total sum of squares
             r2 = 1 - ss_res / ss_tot
 
-            return best_inlier_mask, (best_slope, best_intercept, np.arctan(best_slope), r2)
+            return best_inlier_mask, inlier_distance, (best_slope, best_intercept, np.arctan(best_slope), r2)
         
-        return None, None
+        return None, None, None
     
     def fit(self, X):
         """
@@ -201,7 +229,7 @@ class LinearClusterer:
                 break
             
             # Find next cluster
-            inlier_mask, line_params = self.ransac_single_cluster(remaining_points, angle_threshold=current_angle)
+            inlier_mask, inlier_distance, line_params = self.ransac_single_cluster(remaining_points, angle_threshold=current_angle)
             
             if inlier_mask is None:
                 break
@@ -221,7 +249,8 @@ class LinearClusterer:
                 'current_angle_threshold': current_angle,
                 'r2': line_params[3],
                 'points': X[inlier_original_indices],
-                'n_points': len(inlier_original_indices)
+                'n_points': len(inlier_original_indices),
+                'point_distance': inlier_distance
             })
             
             # Remove assigned points from remaining
@@ -310,207 +339,263 @@ class LinearClusterer:
                 y_range = slope * x_range + intercept
                 plt.plot(x_range, y_range, 'r--', alpha=0.5, linewidth=2)
         
-        plt.xlabel('X', fontsize=12)
-        plt.ylabel('Y', fontsize=12)
-        plt.title('Linear Cluster Analysis', fontsize=14, fontweight='bold')
+        plt.xlabel('Intensity (µV) | SO2 + H2O', fontsize=18)
+        plt.ylabel('Intensity (µV) | SO2 + D2O', fontsize=18)
+        plt.title('RANSAC model', fontsize=14, fontweight='bold')
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=800, height=600, lims=None, model_path=None):
-            """
-            Create an interactive visualization using Plotly
-            
-            Parameters:
-            -----------
-            X : array-like, shape (n_samples, 2)
-                Input data points
-            width : int
-                Figure width in pixels
-            height : int
-                Figure height in pixels
-            lims: Tiple
-                xrane and yrange limits
-                [[x_low,x_high][y_low],[y_high]]
-            filename: str
-                .html file name. eg: "model1.html"
-            """
+    def plot_interactive(self, X, width=800, height=600, lims=None, peaks=None, save_html=None, save_pdf=None, model_path=None):
+        """
+        Create an interactive visualization using Plotly
+        """
 
-            X = np.array(X)
-
-            # Create figure
-            fig = go.Figure()
-
-            # Color palette
-            colors_list = px.colors.qualitative.Plotly + px.colors.qualitative.Set1
-
-            # Axis limits and padding
-            x_min, x_max = X[:, 0].min(), X[:, 0].max()
-            y_min, y_max = X[:, 1].min(), X[:, 1].max()
-            x_padding = (x_max - x_min) * 0.1
-            y_padding = (y_max - y_min) * 0.1
-            x_range = np.array([x_min - x_padding, x_max + x_padding])
-
-            # Assign colors per cluster
-            unique_labels = np.unique(self.labels_)
-            cluster_colors = {label: colors_list[i % len(colors_list)] for i, label in enumerate(unique_labels)}
-
-            # Plot points
-            for label in unique_labels:
-
-                """
-                # Plot only a specific cluster
-                if label != 0 and label != 18:
-                    continue
-                """
-                mask = self.labels_ == label
-                cluster_points = X[mask]
-
-                if label == -1:
-                    # Unassigned points
-                    fig.add_trace(go.Scattergl(
-                        x=cluster_points[:, 0],
-                        y=cluster_points[:, 1],
-                        mode='markers',
-                        name='Unassigned',
-                        marker=dict(
-                            size=8,
-                            color='lightgray',
-                            opacity=0.5,
-                            line=dict(width=1, color='gray')
-                        ),
-                        text=[f'Unassigned<br>X: {x:.5f}<br>Y: {y:.5f}' for x, y in cluster_points],
-                        hoverinfo='text'
-                    ))
-                else:
-                    # Cluster points
-                    cluster_info = next(c for c in self.clusters_ if c['id'] == label)
-                    slope = cluster_info['slope']
-                    intercept = cluster_info['intercept']
-                    arctan = cluster_info['arctan']
+        X = np.array(X) * 1000
+        x_peak = peaks[:, 1].to_numpy() * 1000
+        y_peak = peaks[:, 2].to_numpy() * 1000
+        X_peak = np.column_stack((x_peak, y_peak))
+        peak_labels = peaks[:, 3].to_numpy()
 
 
-                    if np.isinf(slope):
-                        equation = f'x = {intercept:.2f}'
-                    else:
-                        equation = f'y = {slope:.3f}x + {intercept:.2f}'
+        # Create figure
+        fig = go.Figure()
 
-                    color = cluster_colors[label]
+        # Color palette (highly differentiable, paper-safe)
+        GLASBEY = [
+            "#0000FF", "#FF0000", "#00FF00", "#FF00B6",
+            "#005300", "#FFD300", "#009FFF", "#9A4D42", "#00FFBE",
+            "#783FC1", "#1F9698", "#FFACFD", "#B1CC71", "#F1085C",
+            "#FE8F42", "#DD00FF", "#201A01", "#720055", "#766C95",
+            "#02AD24", "#C8FF00", "#886C00", "#FFB79F", "#858567",
+            "#A10300", "#14F9FF", "#00479E", "#DC5E93", "#93D4FF"
+        ]
 
-                    fig.add_trace(go.Scattergl(
-                        x=cluster_points[:, 0],
-                        y=cluster_points[:, 1],
-                        mode='markers',
-                        name=f'Cluster {label}',
-                        marker=dict(
-                            size=10,
-                            color=color,
-                            opacity=1.0,
-                            line=dict(width=1, color='white')
-                        ),
-                        text=[f'Cluster {label}<br>X: {x:.5f}<br>Y: {y:.5f}<br>{equation}<br>arctan: {arctan:.5f}' for x, y in cluster_points],
-                        hoverinfo='text'
-                    ))
+        # Axis limits and padding
+        x_min, x_max = X[:, 0].min(), X[:, 0].max()
+        y_min, y_max = X[:, 1].min(), X[:, 1].max()
+        x_padding = (x_max - x_min) * 0.1
+        y_padding = (y_max - y_min) * 0.1
+        x_range = np.array([x_min - x_padding, x_max + x_padding])
 
-            # Plot regression lines
-            for cluster in self.clusters_:
-                slope = cluster['slope']
-                intercept = cluster['intercept']
-                color = cluster_colors[cluster['id']]
+        # Assign colors per cluster
+        unique_labels = np.unique(self.labels_)
+        colors = GLASBEY
+        cluster_colors = {
+            label: colors[i % len(colors)]
+            for i, label in enumerate(unique_labels)
+        }
+        # Plot points
+        for label in unique_labels:
+
+            mask = self.labels_ == label
+            cluster_points = X[mask]
+
+            mask_peak = peak_labels == label
+            cluster_peak_points = X_peak[mask_peak]
+
+
+            if label == -1:
+                # Unassigned points
+                fig.add_trace(go.Scattergl(
+                    x=cluster_points[:, 0],
+                    y=cluster_points[:, 1],
+                    mode='markers',
+                    name='Unassigned',
+                    marker=dict(
+                        size=7,
+                        color='lightgray',
+                        opacity=0.5,
+                        line=dict(width=0.6, color='black')
+                    ),
+                    text=[f'Unassigned<br>X: {x:.5f}<br>Y: {y:.5f}' for x, y in cluster_points],
+                    hoverinfo='text'
+                ))
+            else:
+                # Cluster points
+                cluster_info = next(c for c in self.clusters_ if c['id'] == label)
+                slope = cluster_info['slope']
+                intercept = cluster_info['intercept']
+                arctan = cluster_info['arctan']
 
                 if np.isinf(slope):
-                    # Vertical line
-                    fig.add_trace(go.Scattergl(
-                        x=[intercept, intercept],
-                        y=[y_min - y_padding, y_max + y_padding],
-                        mode='lines',
-                        name=f'Line {cluster["id"]}',
-                        line=dict(color=color, width=2, dash='dash'),
-                        hoverinfo='skip',
-                        showlegend=False
-                    ))
+                    equation = f'x = {intercept:.2f}'
                 else:
-                    y_line = slope * x_range + intercept
                     equation = f'y = {slope:.3f}x + {intercept:.2f}'
 
-                    fig.add_trace(go.Scattergl(
-                        x=x_range,
-                        y=y_line,
-                        mode='lines',
-                        name=f'Line {cluster["id"]}',
-                        opacity=0.4,
-                        line=dict(color=color, width=2, dash='dash'),
-                        hovertemplate=f'<b>Cluster {cluster["id"]}</b><br>{equation}<br><extra></extra>',
-                        showlegend=False
-                    ))
+                color = cluster_colors[label]
 
-            # Layout and axes
-            fig.update_layout(
-                title={
-                    'text': 'Interactive Linear Cluster Analysis',
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'font': {'size': 20, 'color': '#2c3e50'}
-                },
-                xaxis_title='X',
-                yaxis_title='Y',
-                width=width,
-                height=height,
-                hovermode='closest',
-                plot_bgcolor='white',
-                paper_bgcolor='#f8f9fa',
-                font=dict(size=12),
-                legend=dict(
-                    yanchor="top",
-                    y=0.99,
-                    xanchor="left",
-                    x=0.01,
-                    bgcolor="rgba(255,255,255,0.8)",
-                    bordercolor="lightgray",
-                    borderwidth=1)
-            )
-            if lims is not None:
-                # Optional: set general limits:
-                fig.update_xaxes(
-                    showgrid=True,
-                    gridwidth=1,
-                    gridcolor='lightgray',
-                    zeroline=True,
-                    zerolinewidth=2,
-                    zerolinecolor='lightgray',
-                    range=lims[0]
-                )
+                fig.add_trace(go.Scattergl(
+                    x=cluster_points[:, 0],
+                    y=cluster_points[:, 1],
+                    mode='markers',
+                    name=f'Cluster {label}',
+                    marker=dict(
+                        size=6,
+                        color=color,
+                        opacity=0.6,
+                        line=dict(width=0., color='black')
+                    ),
+                    text=[
+                        f'Cluster {label}<br>'
+                        f'X: {x:.5f}<br>'
+                        f'Y: {y:.5f}<br>'
+                        f'{equation}<br>'
+                        f'arctan: {arctan:.5f}'
+                        for x, y in cluster_points
+                    ],
+                    hoverinfo='text'
+                ))
+        # Plot intensity maixma (OPTIONAL)
 
-                fig.update_yaxes(
-                    showgrid=True,
-                    gridwidth=1,
-                    gridcolor='lightgray',
-                    zeroline=True,
-                    zerolinewidth=2,
-                    zerolinecolor='lightgray',
-                    range=lims[1]
-                )
-                fig.update_layout(showlegend=False)
+                fig.add_trace(go.Scattergl(
+                    x=cluster_peak_points[:,0],
+                    y=cluster_peak_points[:,1],
+                    mode='markers',
+                    name=f'Cluster {label}',
+                    marker=dict(
+                        size=6,
+                        color=color,
+                        opacity=1.0,
+                        line=dict(width=0.8, color='black')
+                    ),
+                    text=[
+                        f'Cluster {label}<br>'
+                        f'Signal Maximum'
+                        for x, y in cluster_peak_points
+                    ],
+                    hoverinfo='text'
+                ))
 
+        # Plot regression lines
+        for cluster in self.clusters_:
+            slope = cluster['slope']
+            intercept = cluster['intercept']
+            color = cluster_colors[cluster['id']]
+
+            if np.isinf(slope):
+                fig.add_trace(go.Scattergl(
+                    x=[intercept, intercept],
+                    y=[y_min - y_padding, y_max + y_padding],
+                    mode='lines',
+                    name=f'Line {cluster["id"]}',
+                    line=dict(color=color, width=2.5, dash='dash'),
+                    hoverinfo='skip',
+                    showlegend=False
+                ))
             else:
-            # Axes with grid and padding
-                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray',
-                                zeroline=True, zerolinewidth=2, zerolinecolor='lightgray',
-                                range=[x_min - x_padding, x_max + x_padding])
-                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray',
-                                zeroline=True, zerolinewidth=2, zerolinecolor='lightgray',
-                                range=[y_min - y_padding, y_max + y_padding])
-                fig.update_layout(showlegend=False)
+                y_line = slope * x_range + intercept
+                equation = f'y = {slope:.3f}x + {intercept:.2f}'
 
-            # Show and save
-            #fig.show()
-            fig.write_html(
-                model_path,
+                fig.add_trace(go.Scattergl(
+                    x=x_range,
+                    y=y_line,
+                    mode='lines',
+                    name=f'Line {cluster["id"]}',
+                    opacity=0.4,
+                    line=dict(color=color, width=2.5, dash='dash'),
+                    hovertemplate=f'<b>Cluster {cluster["id"]}</b><br>{equation}<br><extra></extra>',
+                    showlegend=False
+                ))
+
+        # Layout and axes
+        fig.update_layout(
+            title={
+                'text': 'RANSAC model',
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 22}
+            },
+            xaxis_title='Intensity (µV) | SO2 + H2O',
+            yaxis_title='Intensity (µV) | SO2 + D2O',
+            width=width,
+            height=height,
+            hovermode='closest',
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(
+                family='Times New Roman',
+                size=20,
+                color='black'
+            ),
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="lightgray",
+                borderwidth=1
+            )
+        )
+
+        if lims is not None:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[0]
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[1]
+            )
+            fig.update_layout(showlegend=False)
+
+        else:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=[x_min - x_padding, x_max + x_padding]
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=[y_min - y_padding, y_max + y_padding]
+            )
+            fig.update_layout(showlegend=False)
+
+        if save_html is True:
+
+            fig.write_html(f"{model_path}.html",
                 include_plotlyjs="cdn",
                 full_html=True,
                 auto_open=False
-            )        
+            )
+        if save_pdf is True:
+            fig.write_image(f"{model_path}.pdf",format="pdf",width=1500,height=550,scale=3)
+        
+
+
+        fig.show()
+
     def get_cluster_info(self):
         """
         Get information about each cluster
@@ -565,6 +650,100 @@ class LinearClusterer:
             # --- points
             for x, y in cluster["points"]:
                 f.write(f"{x:.8e} {y:.8e}\n")
+    
+    def interactive_distance_histogram(self, cluster_id,
+    bins=50,
+    xlabel="Distance to cluster ray",
+    ylabel="Counts",
+    title=None,
+    xlims=None,
+    ylims=None,
+    normalize=False,
+    save_pdf=False,
+    save_html=False,
+    output="histogram"
+    ):
+
+        cluster = self.clusters_[cluster_id]
+
+        histnorm = "probability density" if normalize else None
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Histogram(
+            x= cluster['point_distance'],
+            nbinsx=bins,
+            histnorm=histnorm,
+            marker=dict(
+                color="royalblue",
+                line=dict(color="black", width=1)
+            ),
+            opacity=0.85
+        ))
+
+        # Axis limits
+        if xlims is not None:
+            fig.update_xaxes(range=list(xlims))
+        if ylims is not None:
+            fig.update_yaxes(range=list(ylims))
+
+        # Layout (publication style)
+        fig.update_layout(
+            width=800,
+            height=500,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            font=dict(
+                family="Times New Roman",
+                size=20,
+                color="black"
+            ),
+            title=dict(
+                text=title,
+                x=0.5,
+                xanchor="center",
+                font=dict(size=24)
+            ) if title is not None else None,
+            xaxis=dict(
+                title=dict(text=xlabel, font=dict(size=26)),
+                showgrid=True,
+                gridcolor="rgba(0,0,0,0.15)",
+                gridwidth=1,
+                ticks="outside",
+                tickwidth=2,
+                ticklen=8,
+                showline=True,
+                linewidth=2,
+                linecolor="black",
+                tickfont=dict(size=22)
+            ),
+            yaxis=dict(
+                title=dict(text=ylabel, font=dict(size=26)),
+                showgrid=True,
+                gridcolor="rgba(0,0,0,0.15)",
+                gridwidth=1,
+                ticks="outside",
+                tickwidth=2,
+                ticklen=8,
+                showline=True,
+                linewidth=2,
+                linecolor="black",
+                tickfont=dict(size=22)
+            ),
+            margin=dict(l=90, r=30, t=60, b=80)
+        )
+
+        # Save
+        if save_pdf:
+            fig.write_image(f"histograms/{output}.pdf", format="pdf", scale=3)
+
+        if save_html:
+            fig.write_html(f"histograms/{output}.html", include_plotlyjs="cdn")
+
+        fig.show()
+
+
+
 
     def write_df_output(self, df_input: pl.DataFrame, cols_to_fit, create_file=False, selected_cols=None, sort_by_arctan=False, model_name=None,  model_path=None):
         
@@ -651,7 +830,6 @@ class LinearClusterer:
             df_output.select(selected_cols).filter(pl.col("cluster")
                     .is_not_null()).sort("freq").write_csv(model_path,float_precision=8)
 
-        
         return df_output
 
 """

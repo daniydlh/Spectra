@@ -71,8 +71,6 @@ df_groups_incr_decrs
 #fft_df("data/echo.acs", df_h2o_dec_inv, sep="\t", decimals=8)
 #fft_df("data/lines_decreased_with_h2o", df_h2o_dec_inv, sep="\t", decimals=8)
 
-
-
 # Check single intensity with a tolerance
 lines = df_int.filter((pl.col("freq") - 5057.7).abs() < 0.1)
 
@@ -80,6 +78,7 @@ plot_spectra("spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detec
 plot_spectra("spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1],  ylims=[-0.5,5.9], show_peaks=False, show_threshold=False, save_pdf=True, save_html=False)
 plot_spectra("spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
 
+peak_array['int_water'][:,0]
 
 """"
 # Temporarily show all rows

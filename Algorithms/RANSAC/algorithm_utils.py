@@ -102,7 +102,11 @@ def create_output(df, model, cols):
 
 ################################################################################################
 
-def write_model_info_and_plots(models, X, df_ref, cols_to_fit, rltv_path, plot_lims_tuple=None, 
+
+################################################################################################
+
+
+def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, plot_lims_tuple=None, 
                               interactive_plot=False, cluster_info=True, create_full_output_file=True, 
                               sort_by_arctan=False):
     
@@ -124,9 +128,16 @@ def write_model_info_and_plots(models, X, df_ref, cols_to_fit, rltv_path, plot_l
 
         out_path.mkdir(parents=True, exist_ok=True)
 
+        print(f"Writing model (only maxima) clusterization for {m}...")
+        cols = ['freq', 'int_water', 'int_deu', 'cluster']  # choose columns you want
+        df_output_dict[m] = models[m].write_df_output(df_ref_peaks, 
+                                    cols_to_fit, create_file=create_full_output_file, 
+                                    selected_cols=cols, sort_by_arctan=sort_by_arctan, 
+                                    model_name=m, model_path=f"{out_path}/full_output_{m}")     
         if interactive_plot is True:
             print(f"Interactive plot for {m}...")
-            models[m].plot_interactive(X[m], lims=plot_lims_tuple, model_path=f"{out_path}/plot_{m}.html",)
+            peak_cluster = df_output_dict[m].select(cols).filter(pl.col("cluster").is_not_null())
+            models[m].plot_interactive(X[m], lims=plot_lims_tuple, peaks=peak_cluster, model_path=f"{out_path}/plot_{m}", save_html=True, save_pdf=True)
         else:
             print(f"Plot for {m}...")
             models[m].plot(X[m])
@@ -146,8 +157,6 @@ def write_model_info_and_plots(models, X, df_ref, cols_to_fit, rltv_path, plot_l
                 cluster_index = cluster_id_to_index[cluster["id"]]
                 models[m].write_cluster_dat(f"{out_path}/{m}_cluster_{cluster_index}.dat", cluster_id=cluster_index)
 
-        print(f"Writing full model clusterization for {m}...")
-        cols = ['freq', 'int_water', 'int_deu', 'cluster']  # choose columns you want
-        df_output_dict[m] = models[m].write_df_output(df_ref, cols_to_fit, create_file=create_full_output_file, selected_cols=cols, sort_by_arctan=sort_by_arctan, model_name=m, model_path=f"{out_path}/full_output_{m}")        
+           
 
     return df_output_dict
