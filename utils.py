@@ -617,27 +617,282 @@ def plot_2d_ratio_int(output, x, y):
     fig.show()
     return
 
-################################
+##############################
 
-def plot_2d_int(output, x, y):
+def plot_overlapped_spectra(
+    output,
+    df,
+    x,
+    y1,
+    y2,
+    y3,
+    xlims=None,
+    ylims=None,
+    save_html=False,
+    save_pdf=False,
+):
+
+    xvals = df[x].to_numpy()
+    y1vals = df[y1].to_numpy() * 1000.
+    y2vals = df[y2].to_numpy() * 1000.
+    y3vals = df[y3].to_numpy() * 1000.
 
     fig = go.Figure()
-    # Base spectrum (line)
+
+    # Spectra
     fig.add_trace(go.Scatter(
-        x=x,
-        y=y,
-        mode="markers",
-        opacity=0.5,
-        line=dict(color="blue", width=1),
+        x=xvals,
+        y=y1vals,
+        mode="lines",
+        name="SO$_2$",
+        line=dict(color="royalblue", width=2),
     ))
 
+    fig.add_trace(go.Scatter(
+        x=xvals,
+        y=y2vals,
+        mode="lines",
+        name="SO$_2$ + H$_2$O",
+        line=dict(color="red", width=2),
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=xvals,
+        y=y3vals,
+        mode="lines",
+        name="SO$_2$ + D$_2$O",
+        line=dict(color="orange", width=2),
+    ))
+
+    # Axis limits
+    if xlims is not None:
+        fig.update_xaxes(range=list(xlims))
+    if ylims is not None:
+        fig.update_yaxes(range=list(ylims))
+
+    # Layout (publication style)
     fig.update_layout(
-        xaxis_title='Intensity 1',
-        yaxis_title='Intensity 2',
+        width=900,
+        height=550,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(
+            family="Times New Roman",
+            size=20,
+            color="black"
+        ),
+        xaxis=dict(
+            title=dict(text="Frequency (MHz)", font=dict(size=26)),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.15)",
+            gridwidth=1,
+            ticks="outside",
+            tickwidth=2,
+            ticklen=8,
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            tickfont=dict(size=22)
+        ),
+        yaxis=dict(
+            title=dict(text="Intensity (µV)", font=dict(size=26)),
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.15)",
+            gridwidth=1,
+            ticks="outside",
+            tickwidth=2,
+            ticklen=8,
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            tickfont=dict(size=22)
+        ),
+        legend=dict(
+            font=dict(size=20),
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1.0
+        ),
+        margin=dict(l=90, r=30, t=40, b=80)
     )
 
-    fig.write_html(output, include_plotlyjs="cdn")  # archivo interactivo
+    # Save
+    if save_pdf:
+        fig.write_image(
+            f"spectra/{output}.pdf",
+            format="pdf",
+            scale=3
+        )
+
+    if save_html:
+        fig.write_html(
+            f"spectra{output}.html",
+            include_plotlyjs="cdn"
+        )
+
     fig.show()
+
+
+################################
+
+def plot_2d_int(output, df, cols, xlabel='i1', ylabel='i2', peaks=None, lims=None, zoom_lims=None, save_pdf=False, save_html=False, width=800, height=600,):
+
+    x_all = df[cols[0]].to_numpy() * 1000
+    y_all = df[cols[1]].to_numpy() * 1000
+
+    x_peak = peaks[cols[0]].to_numpy() * 1000
+    y_peak = peaks[cols[1]].to_numpy() * 1000
+
+
+    fig = go.Figure()
+    # Scatter plot all points
+    fig.add_trace(go.Scattergl(
+        x=x_all,
+        y=y_all,
+        mode="markers",
+        marker=dict(
+                color="blue",
+                symbol="circle",
+                size=7,
+                opacity=0.6,
+                line=dict(width=0.0, color="black")
+            ),
+        text=[
+            f'X: {x:.5f}<br>'
+            f'Y: {y:.5f}<br>'
+            for x, y in np.column_stack((x_all,y_all))
+            ],
+            hoverinfo='text',
+        ))
+
+    
+    if peaks is not None:
+        fig.add_trace(go.Scattergl(
+            x=x_peak,
+            y=y_peak,
+            mode="markers",
+            marker=dict(
+                color="red",
+                symbol="circle",
+                size=7,
+                opacity=1.0,
+                line=dict(width=0.6, color="black")
+            ),
+            text=[
+                'Signal Maximum<br>'
+                f'X: {x:.5f}<br>'
+                f'Y: {y:.5f}<br>'
+                for x, y in np.column_stack((x_peak, y_peak))
+                ],
+            hoverinfo='text',
+        ))
+
+        # Layout and axes
+        fig.update_layout(
+            title={
+                'text': 'All datapoints I1 vs I2',
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 22}
+            },
+            xaxis_title='Intensity (µV) | SO2 + H2O',
+            yaxis_title='Intensity (µV) | SO2 + D2O',
+            width=width,
+            height=height,
+            hovermode='closest',
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(
+                family='Times New Roman',
+                size=20,
+                color='black'
+            ),
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="lightgray",
+                borderwidth=1
+            )
+        )
+
+               # Axis limits and padding
+        x_min, x_max = x_all.min(), x_all.max()
+        y_min, y_max = y_all.min(), y_all.max()
+        x_padding = (x_max - x_min) * 0.1
+        y_padding = (y_max - y_min) * 0.1
+        x_range = np.array([x_min - x_padding, x_max + x_padding])
+
+        if lims is not None:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[0]
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[1]
+            )
+            fig.update_layout(showlegend=False)
+
+        else:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=[x_all.min() - x_padding, x_max + x_padding]
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=[y_min - y_padding, y_max + y_padding]
+            )
+            fig.update_layout(showlegend=False)
+
+    if save_html is True:
+        fig.write_html(f"{output}.html", include_plotlyjs="cdn", full_html=True, auto_open=False) # archivo interactivo
+
+    if save_pdf is True:
+        fig.write_image(f"{output}.pdf",format="pdf",width=width,height=height,scale=3)
+    
+    fig.show()
+
+    if zoom_lims is not None:
+        fig.update_xaxes(range=zoom_lims[0])
+        fig.update_yaxes(range=zoom_lims[1])
+        fig.write_image(f"{output}_zoom.pdf",format="pdf",width=width,height=height,scale=3)
+
+
     return
 
 ################################

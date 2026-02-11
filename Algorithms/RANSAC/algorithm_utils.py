@@ -108,7 +108,7 @@ def create_output(df, model, cols):
 
 def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, plot_lims_tuple=None, 
                               interactive_plot=False, cluster_info=True, create_full_output_file=True, 
-                              sort_by_arctan=False):
+                              sort_by_arctan=False, zoom_lims=None):
     
     df_output_dict = {}
     
@@ -123,8 +123,12 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
                 shutil.rmtree(out_path)
                 print(f"Directory '{out_path}' has been overwritten.")
             else:
-                print(f"Skipping model '{m}' because directory exists.")
-                continue  # skip this model
+                answer = input(f"Rename '{out_path}'. For example: {rltv_path}/model_test_01. Enter to skip model: ").strip().lower()
+                if answer != "":
+                    out_path = Path(answer) / m
+                else:
+                    print(f"Skipping model '{m}' because directory exists and it was not renamed")
+                    continue  # skip this model
 
         out_path.mkdir(parents=True, exist_ok=True)
 
@@ -137,7 +141,7 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
         if interactive_plot is True:
             print(f"Interactive plot for {m}...")
             peak_cluster = df_output_dict[m].select(cols).filter(pl.col("cluster").is_not_null())
-            models[m].plot_interactive(X[m], lims=plot_lims_tuple, peaks=peak_cluster, model_path=f"{out_path}/plot_{m}", save_html=True, save_pdf=True)
+            models[m].plot_interactive(X[m], lims=plot_lims_tuple, peaks=peak_cluster, model_path=f"{out_path}/plot_{m}", save_html=True, save_pdf=True, zoom_lims=zoom_lims, width=600, height=600)
         else:
             print(f"Plot for {m}...")
             models[m].plot(X[m])

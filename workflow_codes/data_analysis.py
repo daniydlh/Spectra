@@ -74,9 +74,12 @@ df_groups_incr_decrs
 # Check single intensity with a tolerance
 lines = df_int.filter((pl.col("freq") - 5057.7).abs() < 0.1)
 
-plot_spectra("spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=False, show_threshold=False)
-plot_spectra("spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1],  ylims=[-0.5,5.9], show_peaks=False, show_threshold=False, save_pdf=True, save_html=False)
-plot_spectra("spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
+plot_spectra("plots/spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=False, show_threshold=False)
+plot_spectra("plots/spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1],  ylims=[-0.5,5.9], show_peaks=False, show_threshold=False, save_pdf=True, save_html=False)
+plot_spectra("plots/spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
+
+plot_2d_int("plots/intensity_rays/plot_2d_so2_water", df_signals, cols=['int_so2', 'int_water'], peaks=df_int, save_html=True, save_pdf=True)
+plot_2d_int("plots/intensity_rays/plot_2d_water_deu_zoom", df_signals, cols=['int_water', 'int_deu'], peaks=df_int, save_html=True, save_pdf=True, lims=[[-1,60],[-1,46]], zoom_lims=[[-0.01,1.],[-0.01,1.]], width=600, height=600)
 
 peak_array['int_water'][:,0]
 
@@ -123,9 +126,7 @@ plot_2d_ratio_int("plot_2d_ratio23_i2.html", df_int["int_water"], df_int["int_wa
 plot_2d_ratio_int("plot_2d_ratio23_i3.html", df_int["int_deu"], df_int["int_water/int_deu"])
 plot_2d_ratio_int("plot_2d_ratio32_i3.html", df_int["int_deu"], df_int["int_deu"]/df_int["int_water"])
 
-plot_2d_int("plot_2d_so2_water.html", df_int['int_so2'], df_int['int_water'])
-plot_2d_int("plot_2d_so2_deu.html", df_int['int_so2'], df_int['int_deu'])
-plot_2d_int("plot_2d_water_deu.html", df_int['int_water'], df_int['int_deu'])
+
 
 plot_2d_int("plot_2d_water_deu_FFF.html", df_FFF['int_water'], df_FFF['int_deu'])
 plot_2d_ratio_int("plot_2d_ratio23_i2_FFF.html", df_FFF_rat["int_deu"], df_FFF_rat["int_water/int_deu"])

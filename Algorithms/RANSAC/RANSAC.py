@@ -10,7 +10,7 @@ class LinearClusterer:
     Clusters data points into multiple linear patterns using RANSAC.
     """
     
-    def __init__(self, distance_threshold=0.5, angle_threshold=0.5, angle_growth=0.0015, angle_max=0.03, min_samples=5, max_clusters=15, max_iterations=200, force_origin=False, distance_type='euclidean'):
+    def __init__(self, distance_threshold=0.5, angle_threshold=0.5, angle_growth=None, angle_max=None, min_samples=5, max_clusters=15, max_iterations=200, force_origin=False, distance_type='euclidean'):
         """
         Parameters:
         -----------
@@ -82,6 +82,39 @@ class LinearClusterer:
 
         return np.arccos(cos_theta)
 
+    def angular_distance_histogram(self, points, slope):
+        """
+        Signed angular distance between points and a line direction.
+        Positive: counterclockwise from line direction
+        Negative: clockwise from line direction
+        Range: [-π/2, π/2]
+        """
+        # Line direction vector
+        if np.isinf(slope):
+            v = np.array([0.0, 1.0])
+        else:
+            v = np.array([1.0, slope])
+        v /= np.linalg.norm(v)
+        
+        # Point vectors
+        norms = np.linalg.norm(points, axis=1)
+        valid = norms > 0
+        
+        # Signed angle calculation
+        angles = np.zeros(len(points))
+        
+        # Dot product gives cos(theta), cross product gives sin(theta)
+        cos_theta = np.zeros(len(points))
+        sin_theta = np.zeros(len(points))
+        
+        cos_theta[valid] = (points[valid] @ v) / norms[valid]
+        # 2D cross product: p_x * v_y - p_y * v_x
+        sin_theta[valid] = (points[valid, 0] * v[1] - points[valid, 1] * v[0]) / norms[valid]
+        
+        # atan2 gives signed angle
+        angles = np.arctan2(sin_theta, cos_theta)
+
+        return angles
 
     def current_angle_threshold(self, cluster_id):
         theta = self.angle_threshold * (1 + self.angle_growth * cluster_id)
@@ -128,6 +161,7 @@ class LinearClusterer:
         """
         Find a single linear cluster using RANSAC
         """
+        
         if angle_threshold is None:
                 angle_threshold = self.angle_threshold
 
@@ -149,10 +183,12 @@ class LinearClusterer:
             
             if slope is None:
                 continue
-            
             if self.distance_type =='angular':
                 distances = self.angular_distance(X, slope)
-                inlier_mask = distances < self.angle_threshold
+                inlier_mask = distances < angle_threshold
+                distances_for_histogram = self.angular_distance_histogram(X, slope)
+
+
             else:
                 # Handle vertical lines
                 if np.isinf(slope):
@@ -174,7 +210,15 @@ class LinearClusterer:
         # Refit with all inliers
         if len(best_inliers) >= self.min_samples:
             best_slope, best_intercept = self.fit_line(best_inliers)
-            inlier_distance = distances[best_inlier_mask]
+            
+            # NOW compute distances for the BEST model
+            if self.distance_type == 'angular':
+                distances_for_histogram = self.angular_distance_histogram(X, best_slope)
+            else:
+                # For Euclidean, you might want signed distances too
+                distances_for_histogram = None  # or implement signed Euclidean distance
+        
+            inlier_distances_for_histogram = distances_for_histogram[best_inlier_mask] if distances_for_histogram is not None else None
 
             # Compute R_2 with best slope and intercept
             y_pred = best_slope * best_inliers[:,0] + best_intercept
@@ -183,7 +227,7 @@ class LinearClusterer:
             ss_tot = np.sum((best_inliers[:,1] - y_mean)**2)     # total sum of squares
             r2 = 1 - ss_res / ss_tot
 
-            return best_inlier_mask, inlier_distance, (best_slope, best_intercept, np.arctan(best_slope), r2)
+            return best_inlier_mask, inlier_distances_for_histogram, (best_slope, best_intercept, np.arctan(best_slope), r2)
         
         return None, None, None
     
@@ -229,7 +273,7 @@ class LinearClusterer:
                 break
             
             # Find next cluster
-            inlier_mask, inlier_distance, line_params = self.ransac_single_cluster(remaining_points, angle_threshold=current_angle)
+            inlier_mask, inlier_distance_for_histogram, line_params = self.ransac_single_cluster(remaining_points, angle_threshold=current_angle)
             
             if inlier_mask is None:
                 break
@@ -250,7 +294,7 @@ class LinearClusterer:
                 'r2': line_params[3],
                 'points': X[inlier_original_indices],
                 'n_points': len(inlier_original_indices),
-                'point_distance': inlier_distance
+                'point_distance': inlier_distance_for_histogram
             })
             
             # Remove assigned points from remaining
@@ -347,7 +391,7 @@ class LinearClusterer:
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=800, height=600, lims=None, peaks=None, save_html=None, save_pdf=None, model_path=None):
+    def plot_interactive(self, X, width=800, height=600, lims=None, zoom_lims=None, peaks=None, save_html=None, save_pdf=None, model_path=None):
         """
         Create an interactive visualization using Plotly
         """
@@ -432,7 +476,7 @@ class LinearClusterer:
                     mode='markers',
                     name=f'Cluster {label}',
                     marker=dict(
-                        size=6,
+                        size=7,
                         color=color,
                         opacity=0.6,
                         line=dict(width=0., color='black')
@@ -455,7 +499,7 @@ class LinearClusterer:
                     mode='markers',
                     name=f'Cluster {label}',
                     marker=dict(
-                        size=6,
+                        size=7,
                         color=color,
                         opacity=1.0,
                         line=dict(width=0.8, color='black')
@@ -590,11 +634,15 @@ class LinearClusterer:
                 auto_open=False
             )
         if save_pdf is True:
-            fig.write_image(f"{model_path}.pdf",format="pdf",width=1500,height=550,scale=3)
+            fig.write_image(f"{model_path}.pdf",format="pdf",width=width,height=height,scale=3)
         
-
-
         fig.show()
+
+        if zoom_lims is not None:
+            fig.update_xaxes(range=zoom_lims[0])
+            fig.update_yaxes(range=zoom_lims[1])
+            fig.write_image(f"{model_path}_zoom.pdf",format="pdf",width=width,height=height,scale=3)
+            
 
     def get_cluster_info(self):
         """
