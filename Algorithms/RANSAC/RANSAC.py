@@ -706,15 +706,17 @@ class LinearClusterer:
     title=None,
     xlims=None,
     ylims=None,
-    normalize=False,
+    histnorm=None,
     save_pdf=False,
     save_html=False,
+    width=800,
+    height=400,
     output="histogram"
     ):
 
         cluster = self.clusters_[cluster_id]
 
-        histnorm = "probability density" if normalize else None
+        #histnorm = "probability density" if normalize else None
 
         fig = go.Figure()
 
@@ -737,23 +739,23 @@ class LinearClusterer:
 
         # Layout (publication style)
         fig.update_layout(
-            width=800,
-            height=500,
+            width=width,
+            height=height,
             paper_bgcolor="white",
             plot_bgcolor="white",
             font=dict(
                 family="Times New Roman",
-                size=20,
+                size=25,
                 color="black"
             ),
             title=dict(
-                text=title,
+                text="Distance distribution for cluster {cluster_id}",
                 x=0.5,
                 xanchor="center",
                 font=dict(size=24)
             ) if title is not None else None,
             xaxis=dict(
-                title=dict(text=xlabel, font=dict(size=26)),
+                title=dict(text=f"Distance to ray in cluster {cluster_id}", font=dict(size=26)),
                 showgrid=True,
                 gridcolor="rgba(0,0,0,0.15)",
                 gridwidth=1,
@@ -766,7 +768,7 @@ class LinearClusterer:
                 tickfont=dict(size=22)
             ),
             yaxis=dict(
-                title=dict(text=ylabel, font=dict(size=26)),
+                title=dict(text="", font=dict(size=26)),
                 showgrid=True,
                 gridcolor="rgba(0,0,0,0.15)",
                 gridwidth=1,
@@ -783,10 +785,10 @@ class LinearClusterer:
 
         # Save
         if save_pdf:
-            fig.write_image(f"histograms/{output}.pdf", format="pdf", scale=3)
+            fig.write_image(f"histograms/{output}_cluster{cluster_id}.pdf", format="pdf", scale=3)
 
         if save_html:
-            fig.write_html(f"histograms/{output}.html", include_plotlyjs="cdn")
+            fig.write_html(f"histograms/{output}_cluster{cluster_id}.html", include_plotlyjs="cdn", width=width, height=height)
 
         fig.show()
 

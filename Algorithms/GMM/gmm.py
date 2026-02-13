@@ -1,3 +1,4 @@
+from turtle import width
 import polars as pl
 import numpy as np
 from sklearn.mixture import GaussianMixture
@@ -126,9 +127,10 @@ class GMMLinearClusterer:
         
         return ellipse_final[:, 0], ellipse_final[:, 1]
     
-    def plot_interactive(self, col_names=None, n_std=2, save_path=None, 
+    def plot_interactive(self, col_names=None, n_std=2, output='gmm_clustering', 
                         show_ellipses=True, show_centers=True, 
-                        point_size=3, ellipse_width=2):
+                        point_size=3, ellipse_width=2, save_pdf=False, save_html=False,
+                        lims=None, zoom_lims=None, width=800, height=600):
         """
         Create interactive Plotly visualization
         
@@ -156,10 +158,17 @@ class GMMLinearClusterer:
             col_names = ['X', 'Y']
         
         # Create color palette
-        colors = [
-            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+        # Color palette (highly differentiable, paper-safe)
+        GLASBEY = [
+            "#0000FF", "#FF0000", "#00FF00", "#FF00B6",
+            "#005300", "#FFD300", "#009FFF", "#9A4D42", "#00FFBE",
+            "#783FC1", "#1F9698", "#FFACFD", "#B1CC71", "#F1085C",
+            "#FE8F42", "#DD00FF", "#201A01", "#720055", "#766C95",
+            "#02AD24", "#C8FF00", "#886C00", "#FFB79F", "#858567",
+            "#A10300", "#14F9FF", "#00479E", "#DC5E93", "#93D4FF"
         ]
+        colors = GLASBEY
+
         # Extend if needed
         while len(colors) < self.n_components:
             colors.extend(colors)
@@ -204,7 +213,7 @@ class GMMLinearClusterer:
                 
                 x_ellipse, y_ellipse = self._get_ellipse_points(mean, cov, n_std=n_std)
                 
-                fig.add_trace(go.Scatter(
+                fig.add_trace(go.Scattergl(
                     x=x_ellipse,
                     y=y_ellipse,
                     mode='lines',
@@ -220,7 +229,7 @@ class GMMLinearClusterer:
         
         # Plot cluster centers
         if show_centers:
-            fig.add_trace(go.Scatter(
+            fig.add_trace(go.Scattergl(
                 x=self.means_[:, 0],
                 y=self.means_[:, 1],
                 mode='markers',
@@ -238,25 +247,33 @@ class GMMLinearClusterer:
                     'Weight: %{customdata:.3f}<br>' +
                     '<extra></extra>'
                 ),
-                showlegend=False,
+                showlegend=True,
                 customdata=self.weights_
             ))
         
         # Update layout
-        fig.update_layout(
-            title=dict(
+        """
+        title=dict(
                 text=f'GMM Clustering ({self.n_components} components)<br>' +
                      f'<sub>BIC: {self.bic_:.2f} | AIC: {self.aic_:.2f} | ' +
                      f'Log-Likelihood: {self.log_likelihood_:.2f}</sub>',
                 x=0.5,
                 xanchor='center'
-            ),
+            )
+        """
+        fig.update_layout(
+            title= 'GMM Model',
             xaxis_title=col_names[0],
             yaxis_title=col_names[1],
             hovermode='closest',
             template='plotly_white',
             width=1000,
             height=800,
+            font=dict(
+                family='Times New Roman',
+                size=20,
+                color='black'
+            ),
             legend=dict(
                 yanchor="top",
                 y=0.99,
@@ -266,15 +283,76 @@ class GMMLinearClusterer:
             )
         )
         
-        if save_path:
-            fig.write_html(save_path)
-            print(f"Interactive plot saved to: {save_path}")
+        if lims is not None:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[0]
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[1]
+            )
+            fig.update_layout(showlegend=False)
+
+        else:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+            )
+            fig.update_layout(showlegend=False)
+
+        if save_html is True:
+
+            fig.write_html(f"models/GMM/{output}.html",
+                include_plotlyjs="cdn",
+                full_html=True,
+                auto_open=False
+            )
+        if save_pdf is True:
+            fig.write_image(f"models/GMM/{output}.pdf",format="pdf",width=width,height=height,scale=3)
         
         fig.show()
+
+        if zoom_lims is not None:
+            fig.update_xaxes(range=zoom_lims[0])
+            fig.update_yaxes(range=zoom_lims[1])
+            fig.write_image(f"models/GMM/{output}_zoom.pdf",format="pdf",width=width,height=height,scale=3)
         
         return fig
     
-    def plot_probabilities(self, save_path=None):
+    def plot_probabilities(self, output, save_html=False, save_pdf=False, width=800, height=600, lims=None, zoom_lims=None):
         """
         Plot probability heatmap for cluster assignments
         """
@@ -300,11 +378,72 @@ class GMMLinearClusterer:
             height=600
         )
         
-        if save_path:
-            fig.write_html(save_path)
+        if lims is not None:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[0]
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+                range=lims[1]
+            )
+            fig.update_layout(showlegend=False)
+
+        else:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+            )
+
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False,
+                ticks='outside',
+                ticklen=8,
+                tickwidth=2,
+                linewidth=2,
+            )
+            fig.update_layout(showlegend=False)
+
+        if save_html is True:
+
+            fig.write_html(f"modles/GMM/{output}_probabilities.html",
+                include_plotlyjs="cdn",
+                full_html=True,
+                auto_open=False
+            )
+        if save_pdf is True:
+            fig.write_image(f"models/GMM/{output}_probabilities.pdf",format="pdf",width=width,height=height,scale=3)
         
         fig.show()
-        return fig
+
+        if zoom_lims is not None:
+            fig.update_xaxes(range=zoom_lims[0])
+            fig.update_yaxes(range=zoom_lims[1])
+            fig.write_image(f"models/GMM/{output}_zoom.pdf",format="pdf",width=width,height=height,scale=3)
     
     def get_cluster_stats(self):
         """Get statistics for each cluster"""
@@ -326,34 +465,34 @@ class GMMLinearClusterer:
 
 
 # ============================================================================
-# EXAMPLE USAGE
+# USAGE
 # ============================================================================
 
 if __name__ == "__main__":
     from data_analysis import df_signals
-
+    """
     df_filt1 = df_signals.filter(
     (pl.col("int_water") > 0.0003) | (pl.col("int_deu") > 0.00025))
 
     df_filt2 = df_filt1.filter(
     (pl.col("int_water") != 0.) & (pl.col("int_deu") != 0.))
-
+    """
     
     ti = time.time()
     
     # Prepare data
-    y1 = df_filt1["int_water"].to_numpy()
-    y2 = df_filt1["int_deu"].to_numpy()
+    y1 = df_signals["int_water"].to_numpy()*1000
+    y2 = df_signals["int_deu"].to_numpy()*1000
     X = np.column_stack([y1, y2])
     
     # Fit GMM
     print("Fitting GMM...")
     gmm_clusterer = GMMLinearClusterer(
-        n_components=40,
+        n_components=20,
         covariance_type='full',
         max_iter=10000,
         tol=1e-4,
-        reg_covar=1e-20
+        reg_covar=1e-10
     )
     gmm_clusterer.fit(X)
     
@@ -364,18 +503,24 @@ if __name__ == "__main__":
     
     # Create interactive plot
     print("\nGenerating interactive plot...")
+
     gmm_clusterer.plot_interactive(
-        col_names=['Intensidad Water', 'Intensidad Deuterio'],
+        col_names=['Intensity (µV) | SO2 + H2O', 'Intensity (µV) | SO2 + D2O'],
         n_std=2,
-        save_path='models/GMM/gmm_clustering.html',
+        output='gmm_clustering_0_inf',
         show_ellipses=True,
         show_centers=True,
         point_size=6,
-        ellipse_width=2
+        ellipse_width=2,
+        save_html=True,
+        save_pdf=True,
+        lims=[[-2,100],[-2,65]],
+        width=600,
+        height=600
     )
     
     # Optional: Plot probability heatmap
-    # gmm_clusterer.plot_probabilities(save_path='gmm_probabilities.html')
+    #gmm_clusterer.plot_probabilities(output='gmm_probabilities.html')
     
     tf = time.time()
     print(f"\nRunning time: {tf - ti:.4f} s.")

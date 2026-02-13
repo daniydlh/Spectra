@@ -5,7 +5,6 @@ from Algorithms.RANSAC.RANSAC import LinearClusterer
 import numpy as np
 import os
 from pathlib import Path
-import shutil
 
 
 def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
@@ -133,11 +132,11 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
         out_path.mkdir(parents=True, exist_ok=True)
 
         print(f"Writing model (only maxima) clusterization for {m}...")
-        cols = ['freq', 'int_water', 'int_deu', 'cluster']  # choose columns you want
+        cols = ['freq', cols_to_fit[0], cols_to_fit[1], 'cluster']  # choose columns you want
         df_output_dict[m] = models[m].write_df_output(df_ref_peaks, 
                                     cols_to_fit, create_file=create_full_output_file, 
                                     selected_cols=cols, sort_by_arctan=sort_by_arctan, 
-                                    model_name=m, model_path=f"{out_path}/full_output_{m}")     
+                                    model_name=m, model_path=f"{out_path}/full_output_{m}.csv")     
         if interactive_plot is True:
             print(f"Interactive plot for {m}...")
             peak_cluster = df_output_dict[m].select(cols).filter(pl.col("cluster").is_not_null())
@@ -159,7 +158,7 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
 
             for cluster in models[m].clusters_:
                 cluster_index = cluster_id_to_index[cluster["id"]]
-                models[m].write_cluster_dat(f"{out_path}/{m}_cluster_{cluster_index}.dat", cluster_id=cluster_index)
+                models[m].write_cluster_dat(f"{out_path}/{m}_cluster_{cluster_index}.csv", cluster_id=cluster_index)
 
            
 

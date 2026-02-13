@@ -509,10 +509,10 @@ def plot_spectra(
             mode="markers",
             name=f"{int_col} peaks",
             marker=dict(
-                color="crimson",
+                color="red",
                 symbol="circle",
-                size=7,
-                line=dict(width=0.8, color="black")
+                size=5,
+                line=dict(width=0.0, color="black")
             )
         ))
 
@@ -721,14 +721,14 @@ def plot_overlapped_spectra(
     # Save
     if save_pdf:
         fig.write_image(
-            f"spectra/{output}.pdf",
+            f"plots/spectra/{output}.pdf",
             format="pdf",
             scale=3
         )
 
     if save_html:
         fig.write_html(
-            f"spectra{output}.html",
+            f"plots/spectra/{output}.html",
             include_plotlyjs="cdn"
         )
 

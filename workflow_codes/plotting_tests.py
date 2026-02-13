@@ -4,11 +4,8 @@ import polars as pl
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
+from utils import plot_overlapped_spectra
 
-
-
-
-plot_overlapped_spectra('overlapped_spectra', df_all, 'freq', 'int_so2', 'int_water', 'int_deu', xlims=[7223,7230], ylims=[-0.5,6.9], save_pdf=True)
 
 """
 df = df_signals.filter(

@@ -8,7 +8,7 @@ from utils import (noise_rm_all, concat_cols_on_freq, detect_peaks, combine_uniq
                 plot_2d_int, int_is_peak, groups_ispeak, unique_by_freq_keep_max3, 
                 fft_arr, fft_df, increase_or_decrease, plot_histogram_array, 
                 plot_xy_by_ratio_ranges, make_ratio_ranges, groups_incr_decr,
-                how_much_decr_ref)
+                how_much_decr_ref, plot_overlapped_spectra)
 
 
 spectra_water = pl.read_csv("data/2025-10-16-SO2-W_2200k.fft", 
@@ -72,11 +72,14 @@ df_groups_incr_decrs
 #fft_df("data/lines_decreased_with_h2o", df_h2o_dec_inv, sep="\t", decimals=8)
 
 # Check single intensity with a tolerance
-lines = df_int.filter((pl.col("freq") - 5057.7).abs() < 0.1)
+lines = df_int.filter((pl.col("freq") - 5057.1).abs() < 0.1)
+lines
 
-plot_spectra("plots/spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=False, show_threshold=False)
-plot_spectra("plots/spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1],  ylims=[-0.5,5.9], show_peaks=False, show_threshold=False, save_pdf=True, save_html=False)
+plot_spectra("plots/spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=True, show_threshold=True)
+plot_spectra("plots/spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1], show_peaks=True, show_threshold=True, save_pdf=False, save_html=False)
 plot_spectra("plots/spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
+plot_overlapped_spectra('overlapped_spectra', df_all, 'freq', 'int_so2', 'int_water', 'int_deu', save_pdf=False, save_html=True)
+
 
 plot_2d_int("plots/intensity_rays/plot_2d_so2_water", df_signals, cols=['int_so2', 'int_water'], peaks=df_int, save_html=True, save_pdf=True)
 plot_2d_int("plots/intensity_rays/plot_2d_water_deu_zoom", df_signals, cols=['int_water', 'int_deu'], peaks=df_int, save_html=True, save_pdf=True, lims=[[-1,60],[-1,46]], zoom_lims=[[-0.01,1.],[-0.01,1.]], width=600, height=600)
