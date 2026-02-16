@@ -50,7 +50,7 @@ plot_lims = [[-1,60],[-1,46]]
 zoom_plot_lims = [[-0.01,1.],[-0.01,1.]]
 df_output_dict = write_model_info_and_plots(models, X_dict, df_int, cols_to_fit, rltv_path="models/RANSAC", interactive_plot=True, plot_lims_tuple=None, zoom_lims=zoom_plot_lims)
 
-models["model_df_0.0_inf"].interactive_distance_histogram(13,bins=20,xlims=None, histnorm=None, save_pdf=False, save_html=False, height=300, output="histogram_model_df_0.0_inf")
+models["model_df_0.0_inf"].interactive_distance_histogram(16,bins=50,xlims=None, histnorm=None, save_pdf=False, save_html=False, height=300, output="histogram_model_df_0.0_inf")
 len(models["model_df_0.0_inf"].unassigned)
 len(models["model_df_0.0_inf"].clusters_)
 
