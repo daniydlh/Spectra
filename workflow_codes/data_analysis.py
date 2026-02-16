@@ -30,6 +30,8 @@ spectra_so2 = pl.read_csv("data/2025-10-19-SO2_2300k.fft",
 
 sigma_list = [10e-6, 20e-6, 20e-6]
 
+
+
 df_all = concat_cols_on_freq([spectra_so2, spectra_water, spectra_deu],["so2", "water", "deu"])
 df_signals, detection_limits = noise_rm_all(df_all, sigma_list, detection_mult=2)
 print(detection_limits)
