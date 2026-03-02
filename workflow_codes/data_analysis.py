@@ -1,14 +1,17 @@
+from utils import only_noise
+from utils import apply_detection_limits
 import polars as pl
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-from utils import (noise_rm_all, concat_cols_on_freq, detect_peaks, combine_unique_freqs, 
+from utils import (concat_cols_on_freq, detect_peaks, combine_unique_freqs, 
                 peaks_dict_to_arrays, get_int_at_peaks_AIopt, plot_3d,
                 ratio_arc_cols, plot_spectra, plot_2d_ratio_int,
                 plot_2d_int, int_is_peak, groups_ispeak, unique_by_freq_keep_max3, 
                 fft_arr, fft_df, increase_or_decrease, plot_histogram_array, 
                 plot_xy_by_ratio_ranges, make_ratio_ranges, groups_incr_decr,
-                how_much_decr_ref, plot_overlapped_spectra)
+                how_much_decr_ref, plot_overlapped_spectra, set_baseline_at_zero,
+                apply_detection_limits, compute_sigma, only_noise, overwrite_from_peaks)
 
 
 spectra_water = pl.read_csv("data/2025-10-16-SO2-W_2200k.fft", 
@@ -22,54 +25,58 @@ spectra_deu = pl.read_csv("data/2025-10-16-SO2-D-W_2000k.fft",
 spectra_so2 = pl.read_csv("data/2025-10-19-SO2_2300k.fft", 
                         has_header=True, 
                         skip_rows=14)
+                    
 
 # Data construction: 
 # --- df_all: all data
 # --- df_signals: data above noise
 # --- df_int: all peaks and the respective intensity in the others spectra
 
-sigma_list = [10e-6, 20e-6, 20e-6]
-
-
-
+#SPECTRA PROCESSING - NOISE REMOVAL
+#sigma_list = [10e-6, 20e-6, 20e-6]
 df_all = concat_cols_on_freq([spectra_so2, spectra_water, spectra_deu],["so2", "water", "deu"])
-df_signals, detection_limits = noise_rm_all(df_all, sigma_list, detection_mult=2)
+df_all_set0 = set_baseline_at_zero(df_all) #computes median and sets base line (median) at 0 (median in noise is very very similar)
+noise = only_noise(df_all_set0, 1) #noise region over 5x mean (mean always positive, 0 and negative gives errors)
+sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
+df_signals, detection_limits = apply_detection_limits(df_all_set0, sigma_list, detection_mult=3) #removes noise
 print(detection_limits)
+
+#FIND PEAKS
 df_signals.height
 peak_dict = detect_peaks(df_signals)
 peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
 all_peaks = combine_unique_freqs(peak_dict)
-df_int = get_int_at_peaks_AIopt(all_peaks, df_signals, return_df=True)
-df_int.height
-#Add ratios and arctg2 features
+df_int = get_int_at_peaks_AIopt(all_peaks, df_all_set0, return_df=True) #using df_all_set0 so freq peaks always have a value in all spectra
+df_int = unique_by_freq_keep_max3(df_int, "freq", "int_so2", "int_water", "int_deu", tol=0.05)
+df_int = df_int.sort("freq")
+df_signals = overwrite_from_peaks(df_signals, df_int, key="freq")
+
+print(df_signals.filter((pl.col("freq") - 7997.07174).abs() < 0.0001)) #FIND A FREQ
+
+#Add FEATURES ratios and arctg2 features
 df_int = ratio_arc_cols(df_int, ratio=True, arctan2=True)
 df_signals = ratio_arc_cols(df_signals, ratio=True, arctan2=True)
-
-#Remove duplicated peaks between spectra
-df_int = unique_by_freq_keep_max3(df_int, "freq", "int_so2", "int_water", "int_deu", tol=0.05)
-
-#Grouping by 
 df_int, df_int_bool = int_is_peak(df_int, peak_array, 0.05)
-df_int, df_int_groups_incr_decr = increase_or_decrease(df_int, 0.1)
+df_int, df_groups_incr_decrs_overall = increase_or_decrease(df_int, 0.1)
+df_int
+#Grouping by 
+df_groups_ispeak = groups_ispeak(df_int) #groupped by True or False, signal or not signal at all spectra
+df_groups_incr_decrs = groups_incr_decr(df_int) #groupped by increase or decrease of singal when varying composition
+df_TTF = df_groups_ispeak["TTF"] #EXAMPLE
+df_dec_dec = df_groups_incr_decrs["--"] #EXAMPLE (SO" signal decreases for both cases)
+#common = df_TTT.join(df_dec_dec, on="freq", how="semi") #all -- freqs belong to TTT (checked)
+df_two_third_decr = how_much_decr_ref(df_dec_dec, "int_so2/int_water", "int_so2/int_deu", 0.39, 0.05) #all signals that decrease an specific quantity
 
-df_groups_ispeak = groups_ispeak(df_int)
-df_groups_incr_decrs = groups_incr_decr(df_int)
-df_TTT = df_groups_ispeak["TTT"]
-df_dec_dec = df_groups_incr_decrs["--"]
-common = df_TTT.join(df_dec_dec, on="freq", how="semi") #all -- freqs belong to TTT (checked)
-df_two_third_decr = how_much_decr_ref(df_dec_dec, "int_so2/int_water", "int_so2/int_deu", 0.39, 0.05)
-df_two_third_decr
-#print(df_two_third_decr.filter((pl.col("freq") - 5555.7).abs() < 0.1))
-df_TTT, df_TTT_count_incr_decr = increase_or_decrease(df_TTT, 0.05)
+
+#Isolate all lines that decrease with water and create echo.acs
 df_h2o_dec = pl.concat([df_groups_incr_decrs["--"], df_groups_incr_decrs["-0"], df_groups_incr_decrs["-+"], df_groups_incr_decrs["-="]]).select(df_groups_incr_decrs["--"].columns[:4])
 df_h2o_dec_inv = pl.concat([df_groups_incr_decrs["=="], 
                             df_groups_incr_decrs["=0"], 
                             df_groups_incr_decrs["+0"], 
                             df_groups_incr_decrs["+-"], 
                             df_groups_incr_decrs["++"]]).select(df_groups_incr_decrs["--"].columns[:4])
-df_h2o_dec_inv.height
-df_h2o_dec
-df_groups_incr_decrs
+
+
 #fft_df("data/echo.acs", df_h2o_dec_inv, sep="\t", decimals=8)
 #fft_df("data/lines_decreased_with_h2o", df_h2o_dec_inv, sep="\t", decimals=8)
 
@@ -77,16 +84,14 @@ df_groups_incr_decrs
 lines = df_int.filter((pl.col("freq") - 5057.1).abs() < 0.1)
 lines
 
-plot_spectra("plots/spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=True, show_threshold=True)
-plot_spectra("plots/spectra/spectra_h2o", df_all, peak_array, 'freq', 'int_water', detection_limits[1], show_peaks=True, show_threshold=True, save_pdf=False, save_html=False)
-plot_spectra("plots/spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
-plot_overlapped_spectra('overlapped_spectra', df_all, 'freq', 'int_so2', 'int_water', 'int_deu', save_pdf=False, save_html=True)
+#plot_spectra("plots/spectra/spectra_so2", df_all, peak_array, 'freq', 'int_so2', detection_limits[0], show_peaks=True, show_threshold=True)
+plot_spectra("plots/spectra/spectra_h2o", df_signals, peak_array, 'freq', 'int_water', detection_limits[1], show_peaks=True, show_threshold=True, save_pdf=False, save_html=False)
+#plot_spectra("plots/spectra/spectra_d2o", df_all, peak_array, 'freq', 'int_deu', detection_limits[2], show_peaks=False, show_threshold=False,)
+#plot_overlapped_spectra('overlapped_spectra', df_all, 'freq', 'int_so2', 'int_water', 'int_deu', save_pdf=False, save_html=True)
 
 
-plot_2d_int("plots/intensity_rays/plot_2d_so2_water", df_signals, cols=['int_so2', 'int_water'], peaks=df_int, save_html=True, save_pdf=True)
-plot_2d_int("plots/intensity_rays/plot_2d_water_deu_zoom", df_signals, cols=['int_water', 'int_deu'], peaks=df_int, save_html=True, save_pdf=True, lims=[[-1,60],[-1,46]], zoom_lims=[[-0.01,1.],[-0.01,1.]], width=600, height=600)
-
-peak_array['int_water'][:,0]
+#plot_2d_int("plots/intensity_rays/plot_2d_so2_water", df_signals, cols=['int_so2', 'int_water'], peaks=df_int, save_html=True, save_pdf=True)
+#plot_2d_int("plots/intensity_rays/plot_2d_water_deu_zoom", df_signals, cols=['int_water', 'int_deu'], peaks=df_int, save_html=True, save_pdf=True, lims=[[-1,60],[-1,46]], zoom_lims=[[-0.01,1.],[-0.01,1.]], width=600, height=600)
 
 """"
 # Temporarily show all rows

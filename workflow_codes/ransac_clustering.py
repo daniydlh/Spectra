@@ -1,4 +1,4 @@
-from data_analysis import df_signals, df_int
+from data_analysis import df_signals, df_int, df_TTF
 from Algorithms.RANSAC.algorithm_utils import precluster_and_cluster_RANSAC, write_model_info_and_plots
 import polars as pl
 import numpy as np
@@ -8,10 +8,10 @@ import plotly.graph_objects as go
 
 # NO preclustering
 euc_threshold_list = [8e-6]
-ang_threshold_list = [0.001] #rads
-max_it_list = [100000]
+ang_threshold_list = [0.03] #rads
+max_it_list = [10000]
 min_samples_list = [2]
-max_clusters_list = [200]
+max_clusters_list = [50]
 #cols_to_fit = ["int_so2", "int_water"]
 cols_to_fit = ["int_water", "int_deu"]
 ref_col = "int_water/int_deu"

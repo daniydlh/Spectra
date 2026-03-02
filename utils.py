@@ -960,6 +960,22 @@ def ratio_arc_cols(df, ratio=False, arctan2=False):
 
 ################################
 
+def overwrite_from_peaks(df_big, df_small, key="freq"):
+    joined = df_big.join(df_small, on=key, how="left", suffix="_peak")
+
+    cols = df_big.columns.copy()
+    cols.remove(key)
+
+    return (
+        joined.with_columns([
+            pl.coalesce(pl.col(c + "_peak"), pl.col(c)).alias(c)
+            for c in cols
+        ])
+        .select(df_big.columns)
+    )
+
+###############################
+
 
 def get_int_at_peaks_AIopt(peak_freqs, df, return_df = False):
     """
@@ -967,7 +983,7 @@ def get_int_at_peaks_AIopt(peak_freqs, df, return_df = False):
     the first column as frequencies and the rest as intensity columns,
     return a dictionary of intensities at the peak frequencies. Df return if preferred.
 
-    Assumes the frequency column is sorted ascending.
+    Assumes the frequency column is sorted ascendingly.
 
     Notes: this  may not get the exact maximums, since peaks could be displaced by one grid point.
             Does not matter in terms of ratio for ML
@@ -996,7 +1012,7 @@ def get_int_at_peaks_AIopt(peak_freqs, df, return_df = False):
     for i, col in enumerate(cols):
         intensities[col] = data[nearest, i]
     
-    if return_df == True:
+    if return_df is True:
         freq_col = pl.DataFrame({"freq": peak_freqs})
         intensity_df = pl.DataFrame(intensities)
         df_peaks = pl.concat([freq_col, intensity_df], how="horizontal")
@@ -1102,10 +1118,38 @@ def detect_peaks(df, prominence=0.0):
         }
     return peak_dict
 
+#######################################
+
+def only_noise(df, mult):
+    #Removes datapoint above mult times mean -> only noise region 
+    cols = df.columns[1:]
+    return df.with_columns([pl.when(abs(pl.col(col)) < (pl.col(col).mean() * mult)).then(pl.col(col)).otherwise(None).alias(col) for col in cols])
+
+######################################
+
+def set_baseline_at_zero(df: pl.DataFrame) -> pl.DataFrame:
+    cols = df.columns[1:]
+    df = df.with_columns([(pl.col(col) - pl.col(col).median()).alias(col) for col in cols])
+    return df
 
 ####################################
 
-def noise_rm_all(df: pl.DataFrame, sigma_list: list = None, detection_mult=3) -> pl.DataFrame:
+def compute_sigma(df: pl.DataFrame) -> list:
+    # Always skip the first column
+    cols = df.columns[1:]
+    # Vectorized computation: filter peaks and compute std for each column
+    sigma_df = df.select([
+        pl.col(col).std()
+        .alias(f"std_{col}")
+        for col in cols
+    ])
+    # Return the std values as a Python list
+    return list(sigma_df.row(0))
+
+
+######################################
+
+def apply_detection_limits(df: pl.DataFrame, sigma_list: list = None, detection_mult=3) -> pl.DataFrame:
     """
     Zero out values below detection_mult*sigma for all columns except the first one.
     
@@ -1126,16 +1170,15 @@ def noise_rm_all(df: pl.DataFrame, sigma_list: list = None, detection_mult=3) ->
             detection_limits.append(detection_mult*sigma_list[i])
 
         else:
-            print("No sigma values found, using median as sigma...")
-            sigma = df[col].median()
+            print("No sigma values found, computing standard deviation...")
+            sigma = df[col].std()
             detection_limits.append(detection_mult*sigma)
-        
+
         #print(f"{col} detection limits = {detection_mult*sigma}")
-        
         # Apply noise removal
         new_col = pl.when(pl.col(col) < detection_mult*sigma).then(0).otherwise(pl.col(col)).alias(col)
         new_cols.append(new_col)
-    
+
     # Return new DataFrame with first column unchanged and list of sigmas for each col
     return df.select([df.columns[0]] + new_cols), detection_limits
 
