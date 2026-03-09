@@ -1,27 +1,32 @@
-from data_analysis import df_signals, df_int, df_TTF
-from Algorithms.RANSAC.algorithm_utils import precluster_and_cluster_RANSAC, write_model_info_and_plots
+from polars import Null
+from data_analysis import df_signals, df_int
+from Algorithms.RANSAC.algorithm_utils import save_clustering_from_input_lines, precluster_and_cluster_RANSAC, write_model_info_and_plots
 import polars as pl
 import numpy as np
 import plotly.graph_objects as go
 
-
+molecule = 'dmf'
+spectra = ['h2o', 'doh', 'd2o']
+i1, i2, i3 = f'int_{spectra[0]}', f'int_{spectra[1]}', f'int_{spectra[2]}'
+cols = [i1, i2, i3]
 
 # NO preclustering
 euc_threshold_list = [8e-6]
-ang_threshold_list = [0.03] #rads
+
+ang_threshold_list = [0.04] #rads
+angle_growth_list=[0.0]
+angle_max = ang_threshold_list[0]
+
 max_it_list = [10000]
 min_samples_list = [2]
-max_clusters_list = [50]
-#cols_to_fit = ["int_so2", "int_water"]
-cols_to_fit = ["int_water", "int_deu"]
-ref_col = "int_water/int_deu"
-#ref_col = "int_so2/int_water"
+max_clusters_list = [30]
+cols_to_fit = [i2, i3]
+ref_col = f"{i2}/{i3}"
 origin_cleaning_limits = [0.0, 0.0]
-ratio_ranges = [
-        (0.0, None)
-    ]
-angle_growth_list=[0.3]
-angle_max = 0.03
+ratio_ranges = [(0.0, None)]
+
+df_int = df_int.filter((pl.col(i2) != 0.) & (pl.col(i3) != 0.))
+
 """
 ratio_ranges = [
         (0.0, 0.9),
@@ -39,52 +44,27 @@ max_clusters_list = [15,4,15]
 cols_to_fit = ["int_water", "int_deu"]
 origin_cleaning_limits = [0., 0.]
 """
-models, X_dict = precluster_and_cluster_RANSAC(df_signals, cols_to_fit, 1, ref_col, ratio_ranges, 
+models, X_dict = precluster_and_cluster_RANSAC(df_int, cols_to_fit, 1, ref_col, ratio_ranges, 
                                          max_it_list, min_samples_list, max_clusters_list, euc_threshold_list, ang_threshold_list, 
                                          angle_growth_list, angle_max, origin_cleaning_limits=origin_cleaning_limits, force_origin=True, 
                                          distance_type='angular', remove_zeros=False)
 
-#df_int_filt = df_int.filter((pl.col("int_water") != 0.) & (pl.col("int_deu") != 0.))
+#plot_lims = [[-1,60],[-1,46]]
+#zoom_plot_lims = [[-0.01,1.],[-0.01,1.]]
+zoom_plot_lims = None
+df_output_dict = write_model_info_and_plots(models, X_dict, df_int, cols_to_fit, rltv_path=f"models/{molecule}/RANSAC", sort_by_arctan=False, interactive_plot=True, plot_lims_tuple=None, zoom_lims=zoom_plot_lims)
 
-plot_lims = [[-1,60],[-1,46]]
-zoom_plot_lims = [[-0.01,1.],[-0.01,1.]]
-df_output_dict = write_model_info_and_plots(models, X_dict, df_int, cols_to_fit, rltv_path="models/RANSAC", interactive_plot=True, plot_lims_tuple=None, zoom_lims=zoom_plot_lims)
+#models["model_df_0.0_inf"].interactive_distance_histogram(5,bins=100,xlims=None, histnorm=None, save_pdf=False, save_html=False, height=300, output="histogram_model_df_0.0_inf")
+#models["model_df_0.0_inf"].global_hist(nbins=80, save_pdf=False, save_html=True)
+print("Unassigned datapoints:", len(models["model_df_0.0_inf"].unassigned))
+print("Number rof clusters:", len(models["model_df_0.0_inf"].clusters_))
 
-models["model_df_0.0_inf"].interactive_distance_histogram(16,bins=50,xlims=None, histnorm=None, save_pdf=False, save_html=False, height=300, output="histogram_model_df_0.0_inf")
-len(models["model_df_0.0_inf"].unassigned)
-len(models["model_df_0.0_inf"].clusters_)
+#print(df_output_dict["model_df_0.0_inf"].filter((pl.col("freq") -  9108.2720 ).abs() < 0.1))
 
-df_int.filter((pl.col("freq") - 5057).abs() < 1)
-df_output_dict['model_df_0.0_inf'].height
+# MAKE .CSV FILE
+selected_cols = ['freq', 'int_h2o', 'int_doh', 'cluster']  # choose columns you want
+df_output_dict['model_df_0.0_inf'].select(selected_cols).filter(pl.col("cluster").is_not_null()).sort("freq").write_csv("output_model_df_1.1_inf.csv",float_precision=8)
 
-#print(df_output_dict["model_df_0.0_inf"].filter((pl.col("freq") - 5555).abs() < 1))
-"""
-selected_cols = ['freq', 'int_water', 'int_deu', 'cluster']  # choose columns you want
-df_output_dict['model_df_1.1_inf'].select(selected_cols).filter(pl.col("cluster").is_not_null()).sort("freq").write_csv("output_model_df_1.1_inf.csv",float_precision=8)
-"""
-all_distances = []
-
-for c in models["model_df_0.0_inf"].clusters_[2:]:
-    distances = np.asarray(c['point_distance']).ravel()
-    all_distances.extend(distances)
-fig = go.Figure()
-fig.add_trace(go.Histogram(
-            x= all_distances,
-            nbinsx=80,
-            histnorm=None,
-            marker=dict(
-                color="royalblue",
-                line=dict(color="black", width=1)
-            ),
-            opacity=0.85
-        ))
-fig.show()
-
-"""
-lines = np.loadtxt("lines/2so2-2w/freqs_parent.csv")
-print("="*50)
-for freq in lines:
-    print(freq)
-    print(df_output_dict["model_df_0.0_inf"].filter((pl.col("freq") - freq).abs() < 0.02).select(['freq', 'cluster']))
-"""
-
+input_file = "lines/d2w2/d2w2_d13_d14_d16.csv"
+lines = np.loadtxt(input_file)
+save_clustering_from_input_lines(df_output_dict["model_df_0.0_inf"], lines, input_file, model="0.04_ang", save_csv=True)

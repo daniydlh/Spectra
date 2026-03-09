@@ -1,4 +1,5 @@
 import polars as pl
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
@@ -7,8 +8,74 @@ from pathlib import Path
 from typing import Iterable, Tuple, Sequence
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 
 #######################
+
+def l2_normalization(df, cols, plot_2d=False, plot_3d=False):
+
+    X = df[cols].to_numpy()
+    X_norm = X / np.linalg.norm(X, axis=1, keepdims=True)
+
+    if plot_2d is True:
+        fig = make_subplots(rows=1, cols=2, subplot_titles=("Original", "L2 Normalized"))
+        fig.add_trace(go.Scatter(
+            x=X[:,0],
+            y=X[:,1],
+            mode='markers',
+            marker=dict(size=4, color='blue', opacity=0.6)),
+            row=1,
+            col=1
+            )
+        fig.add_trace(go.Scatter(
+            x=X_norm[:,0],
+            y=X_norm[:,1],
+            mode='markers',
+            marker=dict(size=4, color='blue', opacity=0.6)),
+            row=1,
+            col=2
+            )
+
+        fig.update_xaxes(scaleanchor="y", scaleratio=1, row=1, col=1)
+        fig.update_yaxes(constrain="domain", row=1, col=1)
+
+        fig.update_xaxes(scaleanchor="y", scaleratio=1, row=1, col=2)
+        fig.update_yaxes(constrain="domain", row=1, col=2)
+
+        fig.show()
+
+    if plot_3d is True:
+        fig = make_subplots(rows=1, cols=2, specs=[[{"type": "scene"}, {"type": "scene"}]], subplot_titles=("Original", "L2 Normalized"))
+        fig.add_trace(go.Scatter3d(
+            x=X[:,0],
+            y=X[:,1],
+            z=X[:,2],
+            mode='markers',
+            marker=dict(size=4, color='blue', opacity=0.6)),
+            row=1,
+            col=1
+            )
+        fig.add_trace(go.Scatter3d(
+            x=X_norm[:,0],
+            y=X_norm[:,1],
+            z=X_norm[:,2],
+            mode='markers',
+            marker=dict(size=4, color='blue', opacity=0.6)),
+            row=1,
+            col=2
+            )
+        fig.update_layout(
+            scene=dict(aspectmode="cube"),
+            scene2=dict(aspectmode="cube")
+        )
+        fig.show()
+
+    int = pl.DataFrame(X_norm, schema=cols)
+    output = pl.concat([df.select('freq'), int], how='horizontal')
+    return output
+
+    
 
 #####################
 def make_ratio_ranges(
@@ -232,14 +299,14 @@ def how_much_decr_ref(
     return df_filtered
 
 #########################
-def increase_or_decrease(df, tol_percentage):
+def increase_or_decrease(df, cols, tol_percentage):
 
-    i1 = "int_so2"
-    i2 = "int_water"
-    i3 = "int_deu"
+    i1 = cols[0]
+    i2 = cols[1]
+    i3 = cols[2]
 
-    col1 = "+H2O"
-    col2 = "+D2O"
+    col1 = f"variation_in_{i2}"
+    col2 = f"variation_in_{i3}"
 
     df_new = df.with_columns([
         pl.when(pl.col("i1ispeak") & pl.col("i2ispeak"))
@@ -357,9 +424,12 @@ def groups_iszero(df):
 
 ############################
 
-def unique_by_freq_keep_max3(df, freq_col, i1, i2, i3, tol):
+def unique_by_freq_keep_max3(df, freq_col, cols, tol):
 
-    
+    i1 = cols[0]
+    i2 = cols[1]
+    i3 = cols[2]
+
     df_binned = df.with_columns(
         ((pl.col(freq_col) / tol).round(0) * tol).alias("f_bin")
     )
@@ -379,9 +449,9 @@ def unique_by_freq_keep_max3(df, freq_col, i1, i2, i3, tol):
 
 #############################
 
-def groups_incr_decr(df: pl.DataFrame):
-    h = pl.col("+H2O")
-    d = pl.col("+D2O")
+def groups_incr_decr(df: pl.DataFrame, col1, col2):
+    h = pl.col(f"variation_in_{col1}")
+    d = pl.col(f"variation_in_{col2}")
 
     return {
         "++": df.filter((h == 2) & (d == 2)),
@@ -623,9 +693,10 @@ def plot_overlapped_spectra(
     output,
     df,
     x,
-    y1,
-    y2,
-    y3,
+    i1,
+    i2,
+    i3,
+    vline_at,
     xlims=None,
     ylims=None,
     save_html=False,
@@ -633,34 +704,34 @@ def plot_overlapped_spectra(
 ):
 
     xvals = df[x].to_numpy()
-    y1vals = df[y1].to_numpy() * 1000.
-    y2vals = df[y2].to_numpy() * 1000.
-    y3vals = df[y3].to_numpy() * 1000.
+    i1vals = df[i1].to_numpy() * 1000.
+    i2vals = df[i2].to_numpy() * 1000.
+    i3vals = df[i3].to_numpy() * 1000.
 
     fig = go.Figure()
 
     # Spectra
     fig.add_trace(go.Scatter(
         x=xvals,
-        y=y1vals,
+        y=i1vals,
         mode="lines",
-        name="SO$_2$",
+        name=i1,
         line=dict(color="royalblue", width=2),
     ))
 
     fig.add_trace(go.Scatter(
         x=xvals,
-        y=y2vals,
+        y=i2vals,
         mode="lines",
-        name="SO$_2$ + H$_2$O",
+        name=i2,
         line=dict(color="red", width=2),
     ))
 
     fig.add_trace(go.Scatter(
         x=xvals,
-        y=y3vals,
+        y=i3vals,
         mode="lines",
-        name="SO$_2$ + D$_2$O",
+        name=i3,
         line=dict(color="orange", width=2),
     ))
 
@@ -717,6 +788,13 @@ def plot_overlapped_spectra(
         ),
         margin=dict(l=90, r=30, t=40, b=80)
     )
+    if vline_at:
+        fig.add_vline(
+        x=vline_at,
+        line_width=2,
+        line_dash="dash",
+        line_color="red"
+    )
 
     # Save
     if save_pdf:
@@ -728,7 +806,7 @@ def plot_overlapped_spectra(
 
     if save_html:
         fig.write_html(
-            f"plots/spectra/{output}.html",
+            f"{output}.html",
             include_plotlyjs="cdn"
         )
 
@@ -737,13 +815,14 @@ def plot_overlapped_spectra(
 
 ################################
 
-def plot_2d_int(output, df, cols, xlabel='i1', ylabel='i2', peaks=None, lims=None, zoom_lims=None, save_pdf=False, save_html=False, width=800, height=600,):
+def plot_2d_int(output, df, i1, i2, peaks=None, lims=None, zoom_lims=None, save_pdf=False, save_html=False, width=800, height=600,):
 
-    x_all = df[cols[0]].to_numpy() * 1000
-    y_all = df[cols[1]].to_numpy() * 1000
 
-    x_peak = peaks[cols[0]].to_numpy() * 1000
-    y_peak = peaks[cols[1]].to_numpy() * 1000
+    x_all = df[i1].to_numpy() * 1000
+    y_all = df[i2].to_numpy() * 1000
+
+    x_peak = peaks[i1].to_numpy() * 1000
+    y_peak = peaks[i2].to_numpy() * 1000
 
 
     fig = go.Figure()
@@ -797,8 +876,8 @@ def plot_2d_int(output, df, cols, xlabel='i1', ylabel='i2', peaks=None, lims=Non
                 'xanchor': 'center',
                 'font': {'size': 22}
             },
-            xaxis_title='Intensity (µV) | SO2 + H2O',
-            yaxis_title='Intensity (µV) | SO2 + D2O',
+            xaxis_title=f'Intensity (µV) | {i1}',
+            yaxis_title=f'Intensity (µV) | {i2}',
             width=width,
             height=height,
             hovermode='closest',
@@ -820,7 +899,7 @@ def plot_2d_int(output, df, cols, xlabel='i1', ylabel='i2', peaks=None, lims=Non
             )
         )
 
-               # Axis limits and padding
+        # Axis limits and padding
         x_min, x_max = x_all.min(), x_all.max()
         y_min, y_max = y_all.min(), y_all.max()
         x_padding = (x_max - x_min) * 0.1
@@ -878,6 +957,7 @@ def plot_2d_int(output, df, cols, xlabel='i1', ylabel='i2', peaks=None, lims=Non
                 range=[y_min - y_padding, y_max + y_padding]
             )
             fig.update_layout(showlegend=False)
+    
 
     if save_html is True:
         fig.write_html(f"{output}.html", include_plotlyjs="cdn", full_html=True, auto_open=False) # archivo interactivo
@@ -897,42 +977,41 @@ def plot_2d_int(output, df, cols, xlabel='i1', ylabel='i2', peaks=None, lims=Non
 
 ################################
 
-def plot_3d(output, x, y, z, min=None, max=None):
+def plot_3d_int(output, df, i1, i2, i3, min_val=None, max_val=None, save_html=False):
 
-    fig = px.scatter_3d(
-    x=x.to_numpy(),
-    y=y.to_numpy(),
-    z=z.to_numpy(),
-    )
+
+    x_vals = df[i1].to_numpy() * 1000
+    y_vals = df[i2].to_numpy() * 1000
+    z_vals = df[i3].to_numpy() * 1000
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter3d(
+            x=x_vals,
+            y=y_vals,
+            z=z_vals,
+            mode='markers',
+            marker=dict(size=4, color='red', opacity=1)),
+            )
+    axis_config = dict(autorange=True)
+    if min_val is not None and max_val is not None:
+        axis_config = dict(range=[min_val, max_val])
+
     fig.update_layout(
         scene=dict(
-            xaxis_title="Intensity 1",
-            yaxis_title="Intensity 2",
-            zaxis_title="Intensity 3",
-        )
-    )
-    if min != None and max != None:
-        fig.update_layout(
-            scene=dict(
-                xaxis=dict(range=[min, max]),
-                yaxis=dict(range=[min, max]),
-                zaxis=dict(range=[min, max]),
-            )
-        )
-
-    fig.update_traces(
-        marker=dict(
-            size=3,        # point size
-            opacity=0.8,   # transparency (0–1)
+            xaxis_title=i1,
+            yaxis_title=i2,
+            zaxis_title=i3,
+            aspectmode="cube",
+            xaxis=axis_config,
+            yaxis=axis_config,
+            zaxis=axis_config,
         )
     )
 
-    fig.show()
-    fig.write_html(
-        output,
-        include_plotlyjs="cdn",  # or "embed" for fully offline
-        full_html=True
-    )
+    fig.show(renderer="browser")
+
+    if save_html is True:
+        fig.write_html(f"{output}.html", include_plotlyjs="cdn", full_html=True, auto_open=False) # archivo interactivo
     return
 
 ################################
@@ -1184,95 +1263,6 @@ def apply_detection_limits(df: pl.DataFrame, sigma_list: list = None, detection_
 
 ####################################
 
-def fft_df(file_path, spectra: pl.DataFrame, sep=",", decimals=6):
-    file_path = Path(file_path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-
-    extra_lines = [
-        "!Params",
-        "!Apodization=Kaiser",
-        "!Apodization Beta=6.0",
-        "!Band (MHz)=2000.0,8000.0",
-        "!Frequency Start (MHz)=2000.0",
-        "!Frequency Stop (MHz)=8000.0",
-        "!Gate Length (us)=20.0",
-        "!Gate Start (us)=0.0",
-        "!Normalization Reference Frequency (MHz)=2000.0",
-        "!Normalization Scale=1.0",
-        "!Normalization Slope (1/MHz)=0.000137",
-        "!Zero Pad=2",
-        "!Data",
-        "!FFT",
-    ]
-
-    with open(file_path, "w") as f:
-        # write header
-        for line in extra_lines:
-            f.write(line + "\n")
-
-        # write dataframe with controlled float precision
-        spectra.write_csv(
-            f,
-            separator=sep,
-            float_precision=decimals
-        )
-########################
-
-def fft_arr(
-    file_path,
-    x: np.ndarray,
-    y: np.ndarray,
-    sep: str = ",",
-    x_name: str = "frequency",
-    y_name: str = "intensity",
-):
-    """
-    Write FFT data to file from two NumPy arrays.
-
-    Parameters
-    ----------
-    file_path : str or Path
-        Output file path.
-    x, y : np.ndarray
-        1D NumPy arrays of equal length.
-    sep : str
-        Column separator for CSV output.
-    x_name, y_name : str
-        Column names.
-    """
-
-    if x.shape != y.shape:
-        raise ValueError("x and y arrays must have the same shape")
-
-    file_path = Path(file_path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-
-    spectra = pl.DataFrame({
-        x_name: x,
-        y_name: y,
-    })
-
-    extra_lines = [
-        "!Params",
-        "!Apodization=Kaiser",
-        "!Apodization Beta=6.0",
-        "!Band (MHz)=2000.0,8000.0",
-        "!Frequency Start (MHz)=2000.0",
-        "!Frequency Stop (MHz)=8000.0",
-        "!Gate Length (us)=20.0",
-        "!Gate Start (us)=0.0",
-        "!Normalization Reference Frequency (MHz)=2000.0",
-        "!Normalization Scale=1.0",
-        "!Normalization Slope (1/MHz)=0.000137",
-        "!Zero Pad=2",
-        "!Data",
-        "!FFT",
-    ]
-
-    with open(file_path, "w") as f:
-        for line in extra_lines:
-            f.write(line + "\n")
-        spectra.write_csv(f, separator=sep)
 
 #################################################
 
@@ -1429,16 +1419,16 @@ def symlog(x, linthresh=1e-3):
 
 ################################
 
-def concat_cols_on_freq(dfs: Iterable[pl.DataFrame], names: Iterable[str]) -> pl.DataFrame:
-    dfs = list(dfs)
-    names = list(names)
+def concat_cols_on_freq(dfs: Iterable[pl.DataFrame], names) -> pl.DataFrame:
+ 
     new_dfs = []
-    for i, (df, name) in enumerate(zip(dfs, names)):
+    for i, (df, col_name) in enumerate(zip(dfs, names)):
         if i == 0:
-            new_df = df.rename({df.columns[1]: f"int_{name}"})
+            new_df = df.rename({df.columns[0]: 'freq',
+                                df.columns[1]: col_name})
             new_dfs.append(new_df)
             continue
-        new_df = df.drop(df.columns[0]).rename({df.columns[1]: f"int_{name}"})
+        new_df = df.drop(df.columns[0]).rename({df.columns[1]: col_name})
         new_dfs.append(new_df)
 
     df_concat = pl.concat(new_dfs, how="horizontal")

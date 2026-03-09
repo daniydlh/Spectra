@@ -220,16 +220,18 @@ class LinearClusterer:
         
             inlier_distances_for_histogram = distances_for_histogram[best_inlier_mask] if distances_for_histogram is not None else None
 
+
             # Compute R_2 with best slope and intercept
             y_pred = best_slope * best_inliers[:,0] + best_intercept
+            vert_res = (best_inliers[:,1] - y_pred)**2
             y_mean = np.mean(best_inliers[:,1])
-            ss_res = np.sum((best_inliers[:,1] - y_pred)**2)      # residual sum of squares
+            ss_res = np.sum(vert_res)     # residual sum of squares
             ss_tot = np.sum((best_inliers[:,1] - y_mean)**2)     # total sum of squares
             r2 = 1 - ss_res / ss_tot
 
-            return best_inlier_mask, inlier_distances_for_histogram, (best_slope, best_intercept, np.arctan(best_slope), r2)
+            return best_inlier_mask, inlier_distances_for_histogram, vert_res, (best_slope, best_intercept, np.arctan(best_slope), r2)
         
-        return None, None, None
+        return None, None, None, None
     
     def fit(self, X):
         """
@@ -255,7 +257,6 @@ class LinearClusterer:
         once = False
 
         for cluster_id in range(self.max_clusters):
-
             if self.distance_type == "angular":
                     current_angle = self.current_angle_threshold(cluster_id)
 
@@ -263,7 +264,6 @@ class LinearClusterer:
                     if current_angle >= self.angle_max and once is False:
                         once = True
                         print(f"Angle threshold reached max at cluster {cluster_id}")
-
             else:
                 current_angle = None
             
@@ -273,7 +273,7 @@ class LinearClusterer:
                 break
             
             # Find next cluster
-            inlier_mask, inlier_distance_for_histogram, line_params = self.ransac_single_cluster(remaining_points, angle_threshold=current_angle)
+            inlier_mask, inlier_distance_for_histogram, vert_res, line_params = self.ransac_single_cluster(remaining_points, angle_threshold=current_angle)
             
             if inlier_mask is None:
                 break
@@ -294,7 +294,8 @@ class LinearClusterer:
                 'r2': line_params[3],
                 'points': X[inlier_original_indices],
                 'n_points': len(inlier_original_indices),
-                'point_distance': inlier_distance_for_histogram
+                'point_distance': inlier_distance_for_histogram,
+                'residuals': vert_res
             })
             
             # Remove assigned points from remaining
@@ -383,8 +384,8 @@ class LinearClusterer:
                 y_range = slope * x_range + intercept
                 plt.plot(x_range, y_range, 'r--', alpha=0.5, linewidth=2)
         
-        plt.xlabel('Intensity (µV) | SO2 + H2O', fontsize=18)
-        plt.ylabel('Intensity (µV) | SO2 + D2O', fontsize=18)
+        plt.xlabel('Intensity (µV) 1', fontsize=18)
+        plt.ylabel('Intensity (µV) 2', fontsize=18)
         plt.title('RANSAC model', fontsize=14, fontweight='bold')
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.grid(True, alpha=0.3)
@@ -551,8 +552,8 @@ class LinearClusterer:
                 'xanchor': 'center',
                 'font': {'size': 22}
             },
-            xaxis_title='Intensity (µV) | SO2 + H2O',
-            yaxis_title='Intensity (µV) | SO2 + D2O',
+            xaxis_title='Intensity (µV) 1',
+            yaxis_title='Intensity (µV) 2',
             width=width,
             height=height,
             hovermode='closest',
@@ -681,7 +682,17 @@ class LinearClusterer:
         cluster = self.clusters_[cluster_id]
 
         with open(filename, "w") as f:
-            # --- metadata
+            # --- METADATA
+            
+            f.write("-------- Hyperameters ---------\n")
+            f.write(f"angular threshold {self.angle_threshold}\n")
+            f.write(f"Maximum n of clusters {self.max_clusters}\n")
+            f.write(f"Maximum iterations {self.max_iterations}\n")
+            f.write(f"Angle growth {self.angle_growth}\n")
+            f.write(f"Maximum angle allowed {self.angle_max}\n")
+            f.write(f"Min samples {self.min_samples}\n")
+
+            f.write("-------- Variables ---------\n")
             f.write(f"population ranking {int(cluster['id'])}\n")
             f.write(f"slope {float(cluster['slope'])}\n")
             f.write(f"intercept {float(cluster['intercept'])}\n")
@@ -792,14 +803,39 @@ class LinearClusterer:
 
         fig.show()
 
+    def global_hist(self, nbins=80, save_html=False, save_pdf=False, output='global_histogram'):
+    
+        all_distances = []
 
+        for c in self.clusters_[2:]:
+            distances = np.asarray(c['point_distance']).ravel()
+            all_distances.extend(distances)
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(
+                    x= all_distances,
+                    nbinsx=nbins,
+                    histnorm=None,
+                    marker=dict(
+                        color="royalblue",
+                        line=dict(color="black", width=1)
+                    ),
+                    opacity=0.85
+                ))
+
+                # Save
+        if save_pdf:
+            fig.write_image(f"histograms/{output}.pdf", format="pdf", scale=3)
+
+        if save_html:
+            fig.write_html(f"histograms/{output}.html", include_plotlyjs="cdn")
+        fig.show()
 
 
     def write_df_output(self, df_input: pl.DataFrame, cols_to_fit, create_file=False, selected_cols=None, sort_by_arctan=False, model_name=None,  model_path=None):
         
         # ------------------------------------------------------------------
         # 1. Optional: Sort clusters by arctan and build index mapping
-        # ------------------------------------------------------------------
+        # -----------------------------------------------------------------
         if sort_by_arctan is True:
             sorted_clusters = sorted(self.clusters_, key=lambda c: float(c["arctan"]))
             sorted_ids = [c["id"] for c in sorted_clusters]

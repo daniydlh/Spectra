@@ -163,3 +163,36 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
            
 
     return df_output_dict
+
+##############
+
+def save_clustering_from_input_lines(df, lines, input_file, model=None, save_csv=False, tol=0.01):
+
+    rows = []
+
+    for freq in lines:
+        closest = (
+            df.filter((pl.col("freq") - freq).abs() < tol)
+            .drop_nulls("cluster")
+            .sort((pl.col("freq") - freq).abs())
+            .select(["freq", "cluster"])
+            .head(1)
+        )
+
+        if closest.height:
+            f, c = closest.row(0)
+            rows.append((round(float(f), 4), int(c)))
+
+    result_df = pl.DataFrame(rows, schema=["freq", "cluster"])
+
+    if save_csv:
+        input_path = Path(input_file)
+        output_path = input_path.with_name(input_path.stem + f"_clustering_{model}.csv")
+
+        result_df.write_csv(output_path)
+
+        print(f"Saved clustering file to: {output_path}")
+
+    return result_df
+
+
