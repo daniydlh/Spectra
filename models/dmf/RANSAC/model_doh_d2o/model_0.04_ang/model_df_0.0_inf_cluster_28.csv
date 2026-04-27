@@ -1,0 +1,18 @@
+-------- Hyperameters ---------
+angular threshold 0.04
+Maximum n of clusters 30
+Maximum iterations 10000
+Angle growth 0.0
+Maximum angle allowed 0.04
+Min samples 2
+-------- Variables ---------
+population ranking 28
+slope 0.23658721301891286
+intercept 0.0
+r2 0.999999988273288
+arctan 0.23231557430700298
+n_points 2
+
+x y
+6.97523210e-05 1.65220166e-05
+1.14873127e-03 2.71773946e-04
