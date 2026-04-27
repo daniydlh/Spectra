@@ -1,9 +1,14 @@
 # =====================
 # Generated model data
 # =====================
-
+data/
+plots/
+models/
 groups_csv/
 J2IFAM/
+lines/
+histograms/
+Biblio/
 
 # RANSAC outputs
 
