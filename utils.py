@@ -11,6 +11,24 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
+def pipeline_spectra_GUI(df, sigma=None, multiplier=None, freq_col='freq'):
+    df = pl.from_pandas(df)
+    df_clean, detection_limits = apply_detection_limits(df, sigma_list=sigma, detection_mult=multiplier)
+    peak_dict = detect_peaks(df_clean) #gets freq of each peak above noise
+    peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
+    df = df.to_pandas()
+
+    return df, detection_limits, peak_array, df_clean 
+
+
+def pipeline_sigma_GUI(df):
+    df = pl.from_pandas(df)
+    df = set_baseline_at_zero(df) #computes median and sets base line (median) at 0 (median in noise is very very similar)
+    noise = only_noise(df, 1) #noise region over 5x mean (mean always positive, 0 and negative gives errors)
+    sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
+
+    return sigma_list
+
 #######################
 
 def l2_normalization(df, cols, plot_2d=False, plot_3d=False):
@@ -663,6 +681,8 @@ def plot_spectra(
 
     fig.show()
 
+    return fig
+
 
 ################################
 
@@ -1123,7 +1143,7 @@ def get_int_at_peaks(peak_freqs, df, return_df = False):
         
         intensities[col] = np.array(values)
 
-        if return_df == True:
+        if return_df is True:
             freq_col = pl.DataFrame({"freq": peak_freqs})
             intensity_df = pl.DataFrame(intensities)
             df_peaks = pl.concat([freq_col, intensity_df], how="horizontal")
@@ -1180,21 +1200,30 @@ def peaks_dict_to_arrays(peak_dict):
 
 ##################################
 
-def detect_peaks(df, prominence=0.0):
 
-    freq = df[:,0].to_numpy()
+def detect_peaks(df: pl.DataFrame, freq_col: str = "freq", prominence: float = 0.0):
+
+    # ensure Polars
+    if not isinstance(df, pl.DataFrame):
+        df = pl.DataFrame(df)
+
+    freq = df.get_column(freq_col).to_numpy()
+
     peak_dict = {}
 
-    for col in df.columns[1:]:
-        int = df[col].to_numpy()
-        peaks, props = find_peaks(int, prominence=prominence)
-        peak_freq = freq[peaks]
-        peak_int = int[peaks]
+    for col in df.columns:
+        if col == freq_col:
+            continue
+
+        signal = df.get_column(col).to_numpy()
+
+        peaks, _ = find_peaks(signal, prominence=prominence)
 
         peak_dict[col] = {
-            "peak_freq": peak_freq,
-            "peak_int": peak_int
+            "peak_freq": freq[peaks],
+            "peak_int": signal[peaks]
         }
+
     return peak_dict
 
 #######################################
@@ -1245,8 +1274,9 @@ def apply_detection_limits(df: pl.DataFrame, sigma_list: list = None, detection_
     for i, col in enumerate(df.columns[1:]):
         # Determine sigma
         if sigma_list:
+
             sigma = sigma_list[i]
-            detection_limits.append(detection_mult*sigma_list[i])
+            detection_limits.append(detection_mult*sigma)
 
         else:
             print("No sigma values found, computing standard deviation...")

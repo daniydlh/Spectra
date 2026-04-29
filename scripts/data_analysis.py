@@ -1,4 +1,5 @@
 import polars as pl
+import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
@@ -10,7 +11,7 @@ from utils import (concat_cols_on_freq, detect_peaks, combine_unique_freqs,
                 plot_xy_by_ratio_ranges, make_ratio_ranges, groups_incr_decr,
                 how_much_decr_ref, plot_overlapped_spectra, set_baseline_at_zero,
                 apply_detection_limits, compute_sigma, only_noise, overwrite_from_peaks,
-                l2_normalization)
+                l2_normalization, pipeline_spectra_GUI)
 
 
 
@@ -26,28 +27,29 @@ data2 = "DFM_DOH.csv"
 data3 = "DFM_D2O.csv"
 sep = " "
 """
-data1 = "2025-10-19-SO2_2300k.csv"
+data1 = "2025-12-19-SO2_2300k.csv"
 data2 = "2025-10-16-SO2-W_2200k.csv"
 data3 = "2025-10-16-SO2-D-W_2000k.csv"
 sep = ","
+dir = "data/spectra_dat_link/spectra"
 
 #IMPORTANT: Use same order as in spectra list for spectra csv reading spectra[0] = spectra 1
 
-df_spectra1 = pl.read_csv(f"data/{molecule}/{data1}", 
+df_spectra1 = pl.read_csv(f"{dir}/{molecule}/{data1}", 
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
 
-df_spectra2 = pl.read_csv(f"data/{molecule}/{data2}", 
+df_spectra2 = pl.read_csv(f"{dir}/{molecule}/{data2}", 
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
 
-df_spectra3 = pl.read_csv(f"data/{molecule}/{data3}", 
+df_spectra3 = pl.read_csv(f"{dir}/{molecule}/{data3}", 
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
-
+df_spectra3
 # Data construction: 
 # --- df_all: all data
 # --- df_signals: data above noise
@@ -62,14 +64,27 @@ sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
 df_signals, detection_limits = apply_detection_limits(df_all_set0, sigma_list, detection_mult=3) #removes noise
 print(detection_limits)
 
+
+data4 = "2025-12-19-SO2_2300k.fft"
+df = pd.read_csv(f"{dir}/{molecule}/{data4}", skiprows=14, header=0, sep=sep, index_col=False)
+df
+df, dl, peaks = pipeline_spectra_GUI(df, sigma=sigma_list, multiplier=3, freq_col='freq')
+peaks['intensity'][:,0]
+type(peaks)
+dl
+
 #FIND PEAKS
 peak_dict = detect_peaks(df_signals) #gets freq of each peak above noise
+peak_dict
 peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
+peak_array
 all_peaks = combine_unique_freqs(peak_dict)
 df_int = get_int_at_peaks_AIopt(all_peaks, df_signals, return_df=True) #using df_signals so freq is 0 if peak is bloew signal
 #df_int_ext = get_int_at_peaks_AIopt(all_peaks, df_all_set0, return_df=True) #using df_all_set0 so freq peaks always have a value in all spectra
 df_int = unique_by_freq_keep_max3(df_int, "freq", cols, tol=0.05)
 df_int = df_int.sort("freq")
+df_int.write_csv(f"{dir}/{molecule}/spectra_peaks.csv", include_header=True)
+
 #df_signals_ext = overwrite_from_peaks(df_signals, df_int, key="freq")
 
 # PRINT A FREQUENCY
