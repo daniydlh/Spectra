@@ -830,6 +830,7 @@ class LinearClusterer:
             fig.write_html(f"histograms/{output}.html", include_plotlyjs="cdn")
         fig.show()
 
+
     def write_df_output(self, df_input: pl.DataFrame, cols_to_fit, create_file=False, selected_cols=None, sort_by_arctan=False, model_name=None,  model_path=None):
         
         # ------------------------------------------------------------------

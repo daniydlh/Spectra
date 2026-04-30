@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.title("Spectra Analysis App")
+st.title("RANSAC Based Intensity Ratio method")
 
 st.write("""
 Welcome to the spectroscopy analysis tool.
