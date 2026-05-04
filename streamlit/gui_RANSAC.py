@@ -392,17 +392,37 @@ class LinearClusterer:
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=800, height=600, lims=None, zoom_lims=None, peaks=None, save_html=None, save_pdf=None, model_path=None):
+    def plot_interactive(self, X, width=800, height=600, lims=None, cols=None, zoom_lims=None, peaks=None, freqs=None, show_fig=True, save_html=None, save_pdf=None, model_path=None, sort_by_arctan=False):
         """
         Create an interactive visualization using Plotly
         """
 
         X = np.array(X) * 1000
-        x_peak = peaks[:, 1].to_numpy() * 1000
-        y_peak = peaks[:, 2].to_numpy() * 1000
+        if cols is not None:
+            x_peak = peaks[cols[0]].to_numpy() * 1000
+            y_peak = peaks[cols[1]].to_numpy() * 1000
+        else:
+            x_peak = peaks[:, 1].to_numpy() * 1000
+            y_peak = peaks[:, 2].to_numpy() * 1000
         X_peak = np.column_stack((x_peak, y_peak))
-        peak_labels = peaks[:, 3].to_numpy()
+        peak_labels = peaks["cluster"].to_numpy()
+        peak_freqs = peaks["freq"].to_numpy() if "freq" in peaks.columns else None
 
+        # --- Optional arctan sorting ---
+        if sort_by_arctan and len(self.clusters_) > 0:
+            sorted_ids = [c['id'] for c in sorted(self.clusters_, key=lambda c: float(c['arctan']))]
+            label_remap = {old_id: new_id for new_id, old_id in enumerate(sorted_ids)}
+            label_remap[-1] = -1
+            display_labels = np.array([label_remap.get(l, -1) for l in self.labels_])
+            cluster_id_to_display = label_remap
+        else:
+            display_labels = self.labels_
+            cluster_id_to_display = {c['id']: c['id'] for c in self.clusters_}
+            cluster_id_to_display[-1] = -1
+            sorted_ids = [c['id'] for c in sorted(self.clusters_, key=lambda c: float(c['arctan']))]
+            label_remap_back = {new_id: old_id for new_id, old_id in enumerate(sorted_ids)}
+            label_remap_back[-1] = -1
+            peak_labels = np.array([label_remap_back.get(l, -1) for l in peak_labels])
 
         # Create figure
         fig = go.Figure()
@@ -424,25 +444,36 @@ class LinearClusterer:
         y_padding = (y_max - y_min) * 0.1
         x_range = np.array([x_min - x_padding, x_max + x_padding])
 
-        # Assign colors per cluster
-        unique_labels = np.unique(self.labels_)
+        # Assign colors per display label
+        unique_labels = np.unique(display_labels)
         colors = GLASBEY
         cluster_colors = {
             label: colors[i % len(colors)]
             for i, label in enumerate(unique_labels)
         }
+
         # Plot points
         for label in unique_labels:
 
-            mask = self.labels_ == label
+            mask = display_labels == label
             cluster_points = X[mask]
+            cluster_freqs = freqs[mask] if freqs is not None else None
 
             mask_peak = peak_labels == label
             cluster_peak_points = X_peak[mask_peak]
-
+            cluster_peak_freqs = peak_freqs[mask_peak] if peak_freqs is not None else None
 
             if label == -1:
-                # Unassigned points
+                if cluster_freqs is not None:
+                    hover_text = [
+                        f'Unassigned<br>Freq: {f:.4f}<br>X: {x:.5f}<br>Y: {y:.5f}'
+                        for (x, y), f in zip(cluster_points, cluster_freqs)
+                    ]
+                else:
+                    hover_text = [
+                        f'Unassigned<br>X: {x:.5f}<br>Y: {y:.5f}'
+                        for x, y in cluster_points
+                    ]
                 fig.add_trace(go.Scattergl(
                     x=cluster_points[:, 0],
                     y=cluster_points[:, 1],
@@ -454,12 +485,13 @@ class LinearClusterer:
                         opacity=0.5,
                         line=dict(width=0.6, color='black')
                     ),
-                    text=[f'Unassigned<br>X: {x:.5f}<br>Y: {y:.5f}' for x, y in cluster_points],
+                    text=hover_text,
                     hoverinfo='text'
                 ))
             else:
-                # Cluster points
-                cluster_info = next(c for c in self.clusters_ if c['id'] == label)
+                # Map display label back to original cluster id for info lookup
+                orig_id = next(k for k, v in cluster_id_to_display.items() if v == label and k != -1)
+                cluster_info = next(c for c in self.clusters_ if c['id'] == orig_id)
                 slope = cluster_info['slope']
                 intercept = cluster_info['intercept']
                 arctan = cluster_info['arctan']
@@ -470,6 +502,26 @@ class LinearClusterer:
                     equation = f'y = {slope:.3f}x + {intercept:.2f}'
 
                 color = cluster_colors[label]
+
+                if cluster_freqs is not None:
+                    hover_text = [
+                        f'Cluster {label}<br>'
+                        f'Freq: {f:.4f}<br>'
+                        f'X: {x:.5f}<br>'
+                        f'Y: {y:.5f}<br>'
+                        f'{equation}<br>'
+                        f'arctan: {arctan:.5f}'
+                        for (x, y), f in zip(cluster_points, cluster_freqs)
+                    ]
+                else:
+                    hover_text = [
+                        f'Cluster {label}<br>'
+                        f'X: {x:.5f}<br>'
+                        f'Y: {y:.5f}<br>'
+                        f'{equation}<br>'
+                        f'arctan: {arctan:.5f}'
+                        for x, y in cluster_points
+                    ]
 
                 fig.add_trace(go.Scattergl(
                     x=cluster_points[:, 0],
@@ -482,21 +534,26 @@ class LinearClusterer:
                         opacity=0.6,
                         line=dict(width=0., color='black')
                     ),
-                    text=[
-                        f'Cluster {label}<br>'
-                        f'X: {x:.5f}<br>'
-                        f'Y: {y:.5f}<br>'
-                        f'{equation}<br>'
-                        f'arctan: {arctan:.5f}'
-                        for x, y in cluster_points
-                    ],
+                    text=hover_text,
                     hoverinfo='text'
                 ))
-        # Plot intensity maixma (OPTIONAL)
+
+                if cluster_peak_freqs is not None:
+                    peak_hover_text = [
+                        f'Cluster {label}<br>'
+                        f'Signal Maximum<br>'
+                        f'Freq: {f:.4f}'
+                        for (x, y), f in zip(cluster_peak_points, cluster_peak_freqs)
+                    ]
+                else:
+                    peak_hover_text = [
+                        f'Cluster {label}<br>Signal Maximum'
+                        for x, y in cluster_peak_points
+                    ]
 
                 fig.add_trace(go.Scattergl(
-                    x=cluster_peak_points[:,0],
-                    y=cluster_peak_points[:,1],
+                    x=cluster_peak_points[:, 0],
+                    y=cluster_peak_points[:, 1],
                     mode='markers',
                     name=f'Cluster {label}',
                     marker=dict(
@@ -505,11 +562,7 @@ class LinearClusterer:
                         opacity=1.0,
                         line=dict(width=0.8, color='black')
                     ),
-                    text=[
-                        f'Cluster {label}<br>'
-                        f'Signal Maximum'
-                        for x, y in cluster_peak_points
-                    ],
+                    text=peak_hover_text,
                     hoverinfo='text'
                 ))
 
@@ -517,14 +570,15 @@ class LinearClusterer:
         for cluster in self.clusters_:
             slope = cluster['slope']
             intercept = cluster['intercept']
-            color = cluster_colors[cluster['id']]
+            display_label = cluster_id_to_display[cluster['id']]
+            color = cluster_colors[display_label]
 
             if np.isinf(slope):
                 fig.add_trace(go.Scattergl(
                     x=[intercept, intercept],
                     y=[y_min - y_padding, y_max + y_padding],
                     mode='lines',
-                    name=f'Line {cluster["id"]}',
+                    name=f'Line {display_label}',
                     line=dict(color=color, width=2.5, dash='dash'),
                     hoverinfo='skip',
                     showlegend=False
@@ -537,10 +591,10 @@ class LinearClusterer:
                     x=x_range,
                     y=y_line,
                     mode='lines',
-                    name=f'Line {cluster["id"]}',
+                    name=f'Line {display_label}',
                     opacity=0.4,
                     line=dict(color=color, width=2.5, dash='dash'),
-                    hovertemplate=f'<b>Cluster {cluster["id"]}</b><br>{equation}<br><extra></extra>',
+                    hovertemplate=f'<b>Cluster {display_label}</b><br>{equation}<br><extra></extra>',
                     showlegend=False
                 ))
 
@@ -577,74 +631,44 @@ class LinearClusterer:
 
         if lims is not None:
             fig.update_xaxes(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(0,0,0,0.15)',
-                zeroline=False,
-                ticks='outside',
-                ticklen=8,
-                tickwidth=2,
-                linewidth=2,
-                range=lims[0]
+                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False, ticks='outside', ticklen=8, tickwidth=2,
+                linewidth=2, range=lims[0]
             )
-
             fig.update_yaxes(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(0,0,0,0.15)',
-                zeroline=False,
-                ticks='outside',
-                ticklen=8,
-                tickwidth=2,
-                linewidth=2,
-                range=lims[1]
+                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False, ticks='outside', ticklen=8, tickwidth=2,
+                linewidth=2, range=lims[1]
             )
             fig.update_layout(showlegend=False)
-
         else:
             fig.update_xaxes(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(0,0,0,0.15)',
-                zeroline=False,
-                ticks='outside',
-                ticklen=8,
-                tickwidth=2,
-                linewidth=2,
-                range=[x_min - x_padding, x_max + x_padding]
+                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False, ticks='outside', ticklen=8, tickwidth=2,
+                linewidth=2, range=[x_min - x_padding, x_max + x_padding]
             )
-
             fig.update_yaxes(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(0,0,0,0.15)',
-                zeroline=False,
-                ticks='outside',
-                ticklen=8,
-                tickwidth=2,
-                linewidth=2,
-                range=[y_min - y_padding, y_max + y_padding]
+                showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.15)',
+                zeroline=False, ticks='outside', ticklen=8, tickwidth=2,
+                linewidth=2, range=[y_min - y_padding, y_max + y_padding]
             )
             fig.update_layout(showlegend=False)
 
         if save_html is True:
-
-            fig.write_html(f"{model_path}.html",
-                include_plotlyjs="cdn",
-                full_html=True,
-                auto_open=False
-            )
+            fig.write_html(f"{model_path}.html", include_plotlyjs="cdn", full_html=True, auto_open=False)
         if save_pdf is True:
-            fig.write_image(f"{model_path}.pdf",format="pdf",width=width,height=height,scale=3)
-        
-        fig.show()
+            fig.write_image(f"{model_path}.pdf", format="pdf", width=width, height=height, scale=3)
+
+        if show_fig is True:
+            fig.show()
 
         if zoom_lims is not None:
             fig.update_xaxes(range=zoom_lims[0])
             fig.update_yaxes(range=zoom_lims[1])
-            fig.write_image(f"{model_path}_zoom.pdf",format="pdf",width=width,height=height,scale=3)
-            
+            fig.write_image(f"{model_path}_zoom.pdf", format="pdf", width=width, height=height, scale=3)
 
+        return fig
+        
     def get_cluster_info(self):
         """
         Get information about each cluster
@@ -829,7 +853,6 @@ class LinearClusterer:
         if save_html:
             fig.write_html(f"histograms/{output}.html", include_plotlyjs="cdn")
         fig.show()
-
 
     def write_df_output(self, df_input: pl.DataFrame, cols_to_fit, create_file=False, selected_cols=None, sort_by_arctan=False, model_name=None,  model_path=None):
         

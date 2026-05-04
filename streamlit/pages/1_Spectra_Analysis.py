@@ -26,7 +26,7 @@ if 'df_stored' not in st.session_state:
 else:
     names = st.session_state.get('file_names_stored', ['?', '?'])
     st.info(f"**First file:** {names[0]}  \n**Second file:** {names[1]}")
-    if st.button("Re-upload files"):
+    if st.button("Re-uploads files"):
         for key in ['dfs_stored', 'sigma_init', 'mix_list_stored', 'mult_stored', 'file_names_stored', 'df_stored']:
             st.session_state.pop(key, None)
         st.rerun()
@@ -75,21 +75,28 @@ if 'dfs_stored' in st.session_state:
 
     sigma_list = []
     for i, name in enumerate(mix_list):
+
+        # Only set default value if not already in session state
+        sigma_key = f"sigma{i+1}"
+        if sigma_key not in st.session_state:
+            st.session_state[sigma_key] = float(sigma_init[i])
+
         s = st.sidebar.number_input(
             f"Sigma for {name}",
             step=0.000001,
             key=f"sigma{i+1}",
-            value=float(sigma_init[i]),
             format="%.8f"
         )
         sigma_list.append(s)
+
+    if "mult" not in st.session_state:
+        st.session_state["mult"] = int(st.session_state.get('mult_stored', 3))
 
     mult = st.sidebar.number_input(
         "Sigma multiplier",
         step=1,
         key="mult",
-        value=int(st.session_state.get('mult_stored', 3))
-    )
+        )
     st.session_state['mult_stored'] = mult
 
     # --- RUN PIPELINE ---
@@ -102,7 +109,7 @@ if 'dfs_stored' in st.session_state:
     )
 
     st.session_state['df_peaks'] = df_peaks  # ← save BEFORE reading
-
+    st.info(f"Current peaks found: **{len(df_peaks)}** | Sigma: {[f'{s:.6f}' for s in sigma_list]} | Multiplier: {mult}")
     st.download_button(
         "Download maximum intensities (CSV)",
         df_peaks.to_csv(index=False),

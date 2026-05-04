@@ -392,14 +392,18 @@ class LinearClusterer:
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=800, height=600, lims=None, zoom_lims=None, peaks=None, save_html=None, save_pdf=None, model_path=None):
+    def plot_interactive(self, X, width=800, height=600, lims=None, cols=None, zoom_lims=None, peaks=None, show_fig=True, save_html=None, save_pdf=None, model_path=None):
         """
         Create an interactive visualization using Plotly
         """
 
         X = np.array(X) * 1000
-        x_peak = peaks[:, 1].to_numpy() * 1000
-        y_peak = peaks[:, 2].to_numpy() * 1000
+        if cols is not None:
+            x_peak = peaks[cols[0]].to_numpy() * 1000
+            y_peak = peaks[cols[1]].to_numpy() * 1000
+        else:
+            x_peak = peaks[:, 1].to_numpy() * 1000
+            y_peak = peaks[:, 2].to_numpy() * 1000
         X_peak = np.column_stack((x_peak, y_peak))
         peak_labels = peaks[:, 3].to_numpy()
 
@@ -637,12 +641,15 @@ class LinearClusterer:
         if save_pdf is True:
             fig.write_image(f"{model_path}.pdf",format="pdf",width=width,height=height,scale=3)
         
-        fig.show()
+        if show_fig is True:
+            fig.show()
 
         if zoom_lims is not None:
             fig.update_xaxes(range=zoom_lims[0])
             fig.update_yaxes(range=zoom_lims[1])
             fig.write_image(f"{model_path}_zoom.pdf",format="pdf",width=width,height=height,scale=3)
+
+        return fig
             
 
     def get_cluster_info(self):
