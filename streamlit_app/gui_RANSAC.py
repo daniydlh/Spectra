@@ -117,6 +117,8 @@ class LinearClusterer:
         return angles
 
     def current_angle_threshold(self, cluster_id):
+        if self.angle_growth == 0:
+            return self.angle_threshold
         theta = self.angle_threshold * (1 + self.angle_growth * cluster_id)
         return min(theta, self.angle_max)
     
@@ -208,29 +210,33 @@ class LinearClusterer:
                 best_intercept = intercept
         
         # Refit with all inliers
-        if len(best_inliers) >= self.min_samples:
-            best_slope, best_intercept = self.fit_line(best_inliers)
-            
-            # NOW compute distances for the BEST model
-            if self.distance_type == 'angular':
-                distances_for_histogram = self.angular_distance_histogram(X, best_slope)
+        if self.distance_type == 'angular':
+            distances_for_histogram = self.angular_distance_histogram(X, best_slope)
+            inlier_distances = distances_for_histogram[best_inlier_mask]
+
+            # Mean absolute angular distance (radians)
+            mad = np.mean(np.abs(inlier_distances))
+
+            inlier_distances_for_histogram = inlier_distances
+            vert_res = inlier_distances ** 2
+
+        else:
+            if np.isinf(best_slope):
+                ortho_distances = best_inliers[:, 0] - best_intercept
             else:
-                # For Euclidean, you might want signed distances too
-                distances_for_histogram = None  # or implement signed Euclidean distance
-        
-            inlier_distances_for_histogram = distances_for_histogram[best_inlier_mask] if distances_for_histogram is not None else None
+                a = -best_slope
+                b = 1
+                c = -best_intercept
+                norm = np.sqrt(a**2 + b**2)
+                ortho_distances = (a * best_inliers[:, 0] + b * best_inliers[:, 1] + c) / norm
 
+            vert_res = ortho_distances ** 2
+            inlier_distances_for_histogram = None
 
-            # Compute R_2 with best slope and intercept
-            y_pred = best_slope * best_inliers[:,0] + best_intercept
-            vert_res = (best_inliers[:,1] - y_pred)**2
-            y_mean = np.mean(best_inliers[:,1])
-            ss_res = np.sum(vert_res)     # residual sum of squares
-            ss_tot = np.sum((best_inliers[:,1] - y_mean)**2)     # total sum of squares
-            r2 = 1 - ss_res / ss_tot
+            # Mean absolute orthogonal distance
+            mad = np.mean(np.abs(ortho_distances))
 
-            return best_inlier_mask, inlier_distances_for_histogram, vert_res, (best_slope, best_intercept, np.arctan(best_slope), r2)
-        
+        return best_inlier_mask, inlier_distances_for_histogram, vert_res, (best_slope, best_intercept, np.arctan(best_slope), mad)
         return None, None, None, None
     
     def fit(self, X):
@@ -261,7 +267,7 @@ class LinearClusterer:
                     current_angle = self.current_angle_threshold(cluster_id)
 
                     # Optional: Tell when angle reached max value
-                    if current_angle >= self.angle_max and once is False:
+                    if self.angle_growth > 0 and current_angle >= self.angle_max and once is False:
                         once = True
                         print(f"Angle threshold reached max at cluster {cluster_id}")
             else:
@@ -291,7 +297,7 @@ class LinearClusterer:
                 'intercept': line_params[1],
                 'arctan': line_params[2],
                 'current_angle_threshold': current_angle,
-                'r2': line_params[3],
+                'mad': line_params[3],
                 'points': X[inlier_original_indices],
                 'n_points': len(inlier_original_indices),
                 'point_distance': inlier_distance_for_histogram,
@@ -675,7 +681,7 @@ class LinearClusterer:
         """
         info = []
         arctan_list = []
-        r2_sum = 0.
+        mad_sum = 0.
         
         for cluster in self.clusters_:
             info.append({
@@ -683,15 +689,15 @@ class LinearClusterer:
                 'N Points': cluster['n_points'],
                 'Slope': f"{cluster['slope']:.4f}" if not np.isinf(cluster['slope']) else "Vertical",
                 'Intercept': f"{cluster['intercept']:.7f}",
-                'R2': f"{cluster['r2']:.4f}",
+                'mad': f"{cluster['mad']:.4f}",
                 'arctan': f"{cluster['arctan']:.4f}"
             })
-            r2_sum += cluster["r2"]
+            mad_sum += cluster["mad"]
             arctan_list.append(float(cluster["arctan"]))
 
-        r2_avg = float(r2_sum/len(self.clusters_))
+        mad_avg = float(mad_sum/len(self.clusters_))
         info.append({
-            'R2 avg': r2_avg,
+            'mad avg': mad_avg,
             'Distances (arctan)': sorted(arctan_list)
         })
 
@@ -720,7 +726,7 @@ class LinearClusterer:
             f.write(f"population ranking {int(cluster['id'])}\n")
             f.write(f"slope {float(cluster['slope'])}\n")
             f.write(f"intercept {float(cluster['intercept'])}\n")
-            f.write(f"r2 {float(cluster['r2'])}\n")
+            f.write(f"mad {float(cluster['mad'])}\n")
             f.write(f"arctan {float(cluster['arctan'])}\n")
             f.write(f"n_points {int(cluster['n_points'])}\n")
 
@@ -734,98 +740,60 @@ class LinearClusterer:
             for x, y in cluster["points"]:
                 f.write(f"{x:.8e} {y:.8e}\n")
     
-    def interactive_distance_histogram(self, cluster_id,
-    bins=50,
-    xlabel="Distance to cluster ray",
-    ylabel="Counts",
-    title=None,
-    xlims=None,
-    ylims=None,
-    histnorm=None,
-    save_pdf=False,
-    save_html=False,
-    width=800,
-    height=400,
-    output="histogram"
-    ):
+    def interactive_distance_histogram(self, cluster_id, bins=50, xlabel="Distance to cluster ray",
+        ylabel="Counts", title=None, xlims=None, ylims=None, histnorm=None,
+        save_pdf=False, save_html=False, width=700, height=300, output="histogram", show_fig=True):
 
         cluster = self.clusters_[cluster_id]
 
-        #histnorm = "probability density" if normalize else None
-
         fig = go.Figure()
-
         fig.add_trace(go.Histogram(
-            x= cluster['point_distance'],
+            x=cluster['point_distance'],
             nbinsx=bins,
             histnorm=histnorm,
-            marker=dict(
-                color="royalblue",
-                line=dict(color="black", width=1)
-            ),
+            marker=dict(color="royalblue", line=dict(color="black", width=0.8)),
             opacity=0.85
         ))
 
-        # Axis limits
         if xlims is not None:
             fig.update_xaxes(range=list(xlims))
         if ylims is not None:
             fig.update_yaxes(range=list(ylims))
 
-        # Layout (publication style)
         fig.update_layout(
             width=width,
             height=height,
             paper_bgcolor="white",
             plot_bgcolor="white",
-            font=dict(
-                family="Times New Roman",
-                size=25,
-                color="black"
-            ),
-            title=dict(
-                text="Distance distribution for cluster {cluster_id}",
-                x=0.5,
-                xanchor="center",
-                font=dict(size=24)
-            ) if title is not None else None,
+            font=dict(family="Times New Roman", size=14, color="black"),
+            title=None,
             xaxis=dict(
-                title=dict(text=f"Distance to ray in cluster {cluster_id}", font=dict(size=26)),
-                showgrid=True,
-                gridcolor="rgba(0,0,0,0.15)",
-                gridwidth=1,
-                ticks="outside",
-                tickwidth=2,
-                ticklen=8,
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                tickfont=dict(size=22)
+                title=dict(text=f"Angular distance to ray (rad)", font=dict(size=14)),
+                showgrid=True, gridcolor="rgba(0,0,0,0.1)", gridwidth=1,
+                ticks="outside", tickwidth=1, ticklen=5,
+                showline=True, linewidth=1, linecolor="black",
+                tickfont=dict(size=12), zeroline=True,
+                zerolinecolor="rgba(0,0,0,0.3)", zerolinewidth=1,
             ),
             yaxis=dict(
-                title=dict(text="", font=dict(size=26)),
-                showgrid=True,
-                gridcolor="rgba(0,0,0,0.15)",
-                gridwidth=1,
-                ticks="outside",
-                tickwidth=2,
-                ticklen=8,
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                tickfont=dict(size=22)
+                title=dict(text="Counts", font=dict(size=14)),
+                showgrid=True, gridcolor="rgba(0,0,0,0.1)", gridwidth=1,
+                ticks="outside", tickwidth=1, ticklen=5,
+                showline=True, linewidth=1, linecolor="black",
+                tickfont=dict(size=12),
             ),
-            margin=dict(l=90, r=30, t=60, b=80)
+            margin=dict(l=60, r=20, t=20, b=55),
+            bargap=0.05,
         )
 
-        # Save
         if save_pdf:
             fig.write_image(f"histograms/{output}_cluster{cluster_id}.pdf", format="pdf", scale=3)
-
         if save_html:
-            fig.write_html(f"histograms/{output}_cluster{cluster_id}.html", include_plotlyjs="cdn", width=width, height=height)
+            fig.write_html(f"histograms/{output}_cluster{cluster_id}.html", include_plotlyjs="cdn")
+        if show_fig:
+            fig.show()
 
-        fig.show()
+        return fig
 
     def global_hist(self, nbins=80, save_html=False, save_pdf=False, output='global_histogram'):
     

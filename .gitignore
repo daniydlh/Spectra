@@ -1,4 +1,4 @@
 data/
 *.pdf
 *.csv
-*.DS_Store
+.DS_Store

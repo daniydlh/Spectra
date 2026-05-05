@@ -63,7 +63,6 @@ if 'df_stored' not in st.session_state and uploaded_file1 and uploaded_file2:
 
 
 # --- SIDEBAR PARAMETERS + MAIN PLOT ---
-
 if 'dfs_stored' in st.session_state:
     df        = st.session_state['df_stored']
     mix_list  = st.session_state['mix_list_stored']
@@ -71,16 +70,19 @@ if 'dfs_stored' in st.session_state:
     mix1, mix2 = mix_list[0], mix_list[1]
     col_names = [f"int_{mix1}", f"int_{mix2}"]
 
-    st.sidebar.header("Parameters")
+    # --- Handle reset BEFORE widgets are instantiated
+    if st.session_state.get("_reset_spectra_params"):
+        for i in range(len(mix_list)):
+            st.session_state[f"sigma{i+1}"] = float(sigma_init[i])
+        st.session_state["mult"] = int(st.session_state.get('mult_stored', 3))
+        st.session_state["_reset_spectra_params"] = False
 
+    st.sidebar.header("Parameters")
     sigma_list = []
     for i, name in enumerate(mix_list):
-
-        # Only set default value if not already in session state
         sigma_key = f"sigma{i+1}"
         if sigma_key not in st.session_state:
             st.session_state[sigma_key] = float(sigma_init[i])
-
         s = st.sidebar.number_input(
             f"Sigma for {name}",
             step=0.000001,
@@ -91,13 +93,17 @@ if 'dfs_stored' in st.session_state:
 
     if "mult" not in st.session_state:
         st.session_state["mult"] = int(st.session_state.get('mult_stored', 3))
-
     mult = st.sidebar.number_input(
         "Sigma multiplier",
         step=1,
         key="mult",
-        )
+    )
     st.session_state['mult_stored'] = mult
+
+    if st.sidebar.button("Restore initial parameters"):
+        st.session_state["_reset_spectra_params"] = True
+        st.rerun()
+
 
     # --- RUN PIPELINE ---
     df, df_clean, df_peaks, detection_limits, peaks_array = pipeline_spectra_GUI(
