@@ -165,7 +165,6 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
                 cluster_index = cluster_id_to_index[cluster["id"]]
                 models[m].write_cluster_dat(f"{out_path}/{m}_cluster_{cluster_index}.csv", cluster_id=cluster_index)
 
-           
 
     return df_output_dict
 

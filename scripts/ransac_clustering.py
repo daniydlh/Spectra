@@ -5,7 +5,7 @@ import polars as pl
 import numpy as np
 import plotly.graph_objects as go
 
-molecule = 'dmf'
+molecule = 'so2'
 spectra = ['so2', 'h2o', 'd2o']
 i1, i2, i3 = f'int_{spectra[0]}', f'int_{spectra[1]}', f'int_{spectra[2]}'
 cols = [i1, i2, i3]

@@ -1,4 +1,5 @@
 import polars as pl
+import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
@@ -10,7 +11,7 @@ from utils import (concat_cols_on_freq, detect_peaks, combine_unique_freqs,
                 plot_xy_by_ratio_ranges, make_ratio_ranges, groups_incr_decr,
                 how_much_decr_ref, plot_overlapped_spectra, set_baseline_at_zero,
                 apply_detection_limits, compute_sigma, only_noise, overwrite_from_peaks,
-                l2_normalization)
+                l2_normalization, pipeline_spectra_GUI)
 
 
 
@@ -26,28 +27,29 @@ data2 = "DFM_DOH.csv"
 data3 = "DFM_D2O.csv"
 sep = " "
 """
-data1 = "2025-10-19-SO2_2300k.csv"
+data1 = "2025-12-19-SO2_2300k.csv"
 data2 = "2025-10-16-SO2-W_2200k.csv"
 data3 = "2025-10-16-SO2-D-W_2000k.csv"
 sep = ","
+dir = "data/spectra_dat_link/spectra"
 
 #IMPORTANT: Use same order as in spectra list for spectra csv reading spectra[0] = spectra 1
 
-df_spectra1 = pl.read_csv(f"data/{molecule}/{data1}", 
+df_spectra1 = pl.read_csv(f"{dir}/{molecule}/{data1}", 
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
 
-df_spectra2 = pl.read_csv(f"data/{molecule}/{data2}", 
+df_spectra2 = pl.read_csv(f"{dir}/{molecule}/{data2}", 
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
 
-df_spectra3 = pl.read_csv(f"data/{molecule}/{data3}", 
+df_spectra3 = pl.read_csv(f"{dir}/{molecule}/{data3}", 
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
-
+df_spectra3
 # Data construction: 
 # --- df_all: all data
 # --- df_signals: data above noise
@@ -62,14 +64,29 @@ sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
 df_signals, detection_limits = apply_detection_limits(df_all_set0, sigma_list, detection_mult=3) #removes noise
 print(detection_limits)
 
+"""
+data4 = "2025-12-19-SO2_2300k.fft"
+df = pd.read_csv(f"{dir}/{molecule}/{data4}", skiprows=14, header=0, sep=sep, index_col=False)
+df
+df, dl, peaks = pipeline_spectra_GUI(df, sigma=sigma_list, multiplier=3, freq_col='freq')
+peaks['intensity'][:,0]
+type(peaks)
+dl
+"""
+
 #FIND PEAKS
 peak_dict = detect_peaks(df_signals) #gets freq of each peak above noise
+peak_dict
 peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
+peak_array
 all_peaks = combine_unique_freqs(peak_dict)
 df_int = get_int_at_peaks_AIopt(all_peaks, df_signals, return_df=True) #using df_signals so freq is 0 if peak is bloew signal
 #df_int_ext = get_int_at_peaks_AIopt(all_peaks, df_all_set0, return_df=True) #using df_all_set0 so freq peaks always have a value in all spectra
 df_int = unique_by_freq_keep_max3(df_int, "freq", cols, tol=0.05)
 df_int = df_int.sort("freq")
+df_int.height
+df_int.write_csv(f"{dir}/{molecule}/spectra_peaks.csv", include_header=True)
+
 #df_signals_ext = overwrite_from_peaks(df_signals, df_int, key="freq")
 
 # PRINT A FREQUENCY
@@ -87,14 +104,15 @@ with pl.Config():
     pl.Config.set_tbl_rows(-1)  # -1 means show all rows
     print(df_h2o_dec)# GROUP BY
 """
-
+"""
 df_groups_ispeak = groups_ispeak(df_int) #groupped by True or False, signal or not signal at all spectra
 df_groups_incr_decrs = groups_incr_decr(df_int, i2, i3) #groupped by increase or decrease of singal when varying composition
 df_TTF = df_groups_ispeak["TTF"] #EXAMPLE
 df_dec_dec = df_groups_incr_decrs["--"] #EXAMPLE (SO" signal decreases for both cases)
 #common = df_TTT.join(df_dec_dec, on="freq", how="semi") #all -- freqs belong to TTT (checked)
 df_two_third_decr = how_much_decr_ref(df_dec_dec, f"{i1}/{i2}", f"{i1}/{i3}", 0.39, 0.05) #all signals that decrease an specific quantity
-
+"""
+"""
 # Isolate all lines that decrease with water and create echo.acs
 df_h2o_dec = pl.concat([df_groups_incr_decrs["--"], df_groups_incr_decrs["-0"], df_groups_incr_decrs["-+"], df_groups_incr_decrs["-="]]).select(df_groups_incr_decrs["--"].columns[:4])
 df_h2o_dec_inv = pl.concat([df_groups_incr_decrs["=="], 
@@ -116,11 +134,13 @@ print(df_signals.filter((pl.col(f"int_{spectra[0]}") - 4.46240e-3).abs() < 0.000
 
 #L2 normalization and plot
 """
+"""
 df_filt1 = df_int.filter(
 (pl.col("int_water") > 0.0002) | (pl.col("int_deu") > 0.0002) | (pl.col("int_so2") > 0.0002))
 df_filt2 = df_filt1.filter(
 (pl.col("int_water") != 0.) & (pl.col("int_deu") != 0.))
 df_int_l2 = l2_normalization(df_filt2, cols=['int_so2', 'int_water', 'int_deu'], plot_2d=True, plot_3d=True) 
+"""
 """
 
 #plot_spectra(f"plots/spectra/{molecule}/spectra_{spectra[0]}", df_signals, peak_array, 'freq', i1, detection_limits[0], show_peaks=True, show_threshold=True, save_html=True)
@@ -132,6 +152,7 @@ plot_overlapped_spectra(f"plots/spectra/{molecule}/overlapped_spectra_{spectra[0
 #plot_2d_int(f"plots/intensity_rays/{molecule}/plot_2d_{spectra[0]}_{spectra[1]}_zoom", df_signals, cols=[spectra[0], spectra[1]], peaks=df_int, save_html=True, save_pdf=True, lims=[[-1,60],[-1,46]], zoom_lims=[[-0.01,1.],[-0.01,1.]], width=600, height=600)
 #plot_3d_int(f"plots/intensity_rays/{molecule}/plot_3d_{spectra[0]}_{spectra[1]}_{spectra[2]}", df_signals, i1, i2, i3, save_html=True)
 
+"""
 """
 df_int_wd = df_int.select([pl.col("int_water"), pl.col("int_deu")])
 df_int_wd_clean = df_int_wd.filter((pl.col("int_water") != 0) & (pl.col("int_deu") != 0))
@@ -152,7 +173,8 @@ fig = plot_xy_by_ratio_ranges(df, "int_water", "int_deu", "int_water/int_deu", r
 fig.write_html("plot_IvI_groupped.html", include_plotlyjs="cdn")  # archivo interactivo
 
 df.filter((pl.col("int_water/int_deu") >1.5)).height
-
+"""
+"""
 
 # Data plotting
 plot_base_peaks("plot_so2_peaks.html", df_all, peak_array, 'freq', 'int_so2', sigma3_list[0])
