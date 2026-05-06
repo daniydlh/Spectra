@@ -29,7 +29,6 @@ DEFAULTS = {
     "it": 1000,
 }
 
-# Reset flag must be handled BEFORE widgets are created
 if st.session_state.get("_reset_params"):
     for key, val in DEFAULTS.items():
         st.session_state[key] = val
@@ -41,20 +40,18 @@ max_clusters = st.sidebar.number_input("Maximum clusters", step=1, key="max_clus
 
 with st.sidebar.expander("Advanced"):
     ang_growth = st.number_input("Angular threshold growth per cluster", step=0.005, key="ang_growth", value=0.0, format="%.4f")
-    ang_max = st.number_input("Maximum angle possible after growth", step=0.005, key="ang_max", value=0.6, format="%.4f")
+    ang_max = st.number_input("Maximum angle possible after growth", step=0.005, key="ang_max", value=0.0, format="%.4f")
     iterations = st.number_input("RANSAC iterations", step=500, key="it", value=1000)
 
 if st.sidebar.button("Restore default parameters"):
     st.session_state["_reset_params"] = True
     st.rerun()
 
-
 # --- RUN ---
 if st.button("Run model", key="run_model_btn"):
     x = df_peaks[col_names[0]].to_numpy()
     y = df_peaks[col_names[1]].to_numpy()
     X = np.column_stack((x, y))
-    
 
     st.write(f"Fitting {X.shape[0]} points...")
 
@@ -96,14 +93,12 @@ if st.button("Run model", key="run_model_btn"):
             save_html=None, save_pdf=None, model_path=None
         )
 
-    # Store everything in session state
     st.session_state["model_fig"] = fig
     st.session_state["model_info"] = (len(model.clusters_), len(model.unassigned))
     st.session_state["peak_cluster_csv"] = peak_cluster.to_pandas().to_csv(index=False)
-    st.session_state["clusterer"] = model   # ← add this
+    st.session_state["clusterer"] = model
 
-
-# --- DISPLAY RESULTS (persists across reruns) ---
+# --- DISPLAY RESULTS ---
 if "model_fig" in st.session_state:
     n_clusters, n_unassigned = st.session_state["model_info"]
     st.success("Model ran successfully!")
@@ -116,13 +111,7 @@ if "model_fig" in st.session_state:
     )
     st.plotly_chart(st.session_state["model_fig"], use_container_width=True)
 
-# --- CLUSTER INSPECTOR (add after the plotly_chart display) ---
-
-if "model_fig" in st.session_state and "clusterer" not in st.session_state:
-    # Store clusterer too — add this inside your "Run model" button block:
-    # st.session_state["clusterer"] = model   ← add this line in your button block
-    pass
-
+# --- CLUSTER INSPECTOR ---
 if "clusterer" in st.session_state:
     clusterer = st.session_state["clusterer"]
     clusters = clusterer.clusters_
@@ -130,8 +119,13 @@ if "clusterer" in st.session_state:
     st.divider()
     st.subheader("Cluster inspector")
 
-    # Build display options: sorted by arctan
     sorted_clusters = sorted(clusters, key=lambda c: float(c["arctan"]))
+
+    # Build mapping: original cluster id → arctan-sorted display index
+    orig_id_to_display_idx = {
+        c["id"]: i for i, c in enumerate(sorted_clusters)
+    }
+
     cluster_options = {
         f"Cluster {i}  |  arctan = {c['arctan']:.4f}  |  slope = {c['slope']:.4f}  |  N = {c['n_points']}": i
         for i, c in enumerate(sorted_clusters)
@@ -144,33 +138,39 @@ if "clusterer" in st.session_state:
         placeholder="Select one or more clusters..."
     )
 
+    # --- ONE EXPANDER PER SELECTED CLUSTER ---
     for label in selected_labels:
         display_idx = cluster_options[label]
         c = sorted_clusters[display_idx]
 
         with st.expander(f"Cluster {display_idx} — arctan {c['arctan']:.4f}", expanded=True):
-            # --- Characteristics
             col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("N points", c["n_points"])
             col2.metric("Slope", f"{c['slope']:.5f}")
             col3.metric("Intercept", f"{c['intercept']:.5f}")
             col4.metric("arctan", f"{c['arctan']:.5f}")
-            col5.metric("MAD", f"{c['mad']:.4f}")
+            col5.metric("MAD", f"{c['mad']:.6f}")
 
-            # --- Points table
             pts = c["points"]
             df_pts = pd.DataFrame(pts, columns=[col_names[0], col_names[1]])
-            # Join freq from df_peaks by matching on the two intensity columns
-            df_pts = df_pts.merge(
-                df_peaks[[col_names[0], col_names[1], "freq"]],
-                on=[col_names[0], col_names[1]],
-                how="left"
-            )
-            df_pts = df_pts[["freq", col_names[0], col_names[1]]]  # reorder columns
-            df_pts.index.name = "point"
-            st.dataframe(df_pts, use_container_width=True, height=300)
 
-            # --- Angular distance histogram
+            ROUND = 8
+            df_pts["_k0"] = df_pts[col_names[0]].round(ROUND)
+            df_pts["_k1"] = df_pts[col_names[1]].round(ROUND)
+            df_ref = df_peaks[[col_names[0], col_names[1], "freq"]].copy()
+            df_ref["_k0"] = df_ref[col_names[0]].round(ROUND)
+            df_ref["_k1"] = df_ref[col_names[1]].round(ROUND)
+
+            df_pts = df_pts.merge(
+                df_ref[["_k0", "_k1", "freq"]],
+                on=["_k0", "_k1"],
+                how="left"
+            ).drop(columns=["_k0", "_k1"])
+
+            df_pts = df_pts[["freq", col_names[0], col_names[1]]]
+            df_pts.index.name = "point"
+
+            st.dataframe(df_pts, use_container_width=True, height=300)
 
             fig_hist = clusterer.interactive_distance_histogram(
                 cluster_id=c["id"],
@@ -179,19 +179,68 @@ if "clusterer" in st.session_state:
                 height=300,
                 show_fig=False,
             )
-
-            fig_hist.update_layout(
-                title="Angular distance to cluster ray"
-            )
             st.plotly_chart(fig_hist, use_container_width=True, key=f"hist_{display_idx}")
 
-
-            # --- Download
-            csv_pts = df_pts.to_csv(index=False)
             st.download_button(
                 label=f"Download cluster {display_idx} points (CSV)",
-                data=csv_pts,
+                data=df_pts.to_csv(index=False),
                 file_name=f"cluster_{display_idx}_arctan{c['arctan']:.4f}.csv",
                 mime="text/csv",
                 key=f"dl_cluster_{display_idx}"
             )
+
+    # --- ECHO FILE ---
+    if selected_labels:
+        # Collect original IDs of selected clusters
+        selected_orig_ids = set()
+        for label in selected_labels:
+            display_idx = cluster_options[label]
+            c = sorted_clusters[display_idx]
+            selected_orig_ids.add(c["id"])
+
+        # Exclude selected clusters and unassigned points (-1)
+        echo_mask = np.isin(clusterer.labels_, list(selected_orig_ids), invert=True) \
+                    & (clusterer.labels_ != -1)
+        echo_indices = np.where(echo_mask)[0]
+
+        if len(echo_indices) > 0:
+            X_full = np.column_stack((
+                df_peaks[col_names[0]].to_numpy(),
+                df_peaks[col_names[1]].to_numpy()
+            ))
+            echo_xy = X_full[echo_indices]
+            df_echo = pd.DataFrame(echo_xy, columns=[col_names[0], col_names[1]])
+
+            # Use arctan-sorted display index instead of original cluster id
+            df_echo["cluster"] = [
+                orig_id_to_display_idx.get(clusterer.labels_[i], -1)
+                for i in echo_indices
+            ]
+
+            ROUND = 8
+            df_echo["_k0"] = df_echo[col_names[0]].round(ROUND)
+            df_echo["_k1"] = df_echo[col_names[1]].round(ROUND)
+            df_ref_echo = df_peaks[[col_names[0], col_names[1], "freq"]].copy()
+            df_ref_echo["_k0"] = df_ref_echo[col_names[0]].round(ROUND)
+            df_ref_echo["_k1"] = df_ref_echo[col_names[1]].round(ROUND)
+
+            df_echo = df_echo.merge(
+                df_ref_echo[["_k0", "_k1", "freq"]],
+                on=["_k0", "_k1"],
+                how="left"
+            ).drop(columns=["_k0", "_k1"])
+
+            df_echo = df_echo[["freq"]].sort_values("freq")
+
+            st.divider()
+            st.download_button(
+                label="⬇ Download echo.csv",
+                data=df_echo.to_csv(index=False, header=False),
+                file_name="echo.acs",
+                mime="text/csv",
+                key="download_echo",
+                use_container_width=True,  # makes it wide
+                type="primary",            # gives it the blue filled style
+            )
+        else:
+            st.info("No points remain for the echo file after excluding selected clusters.")
