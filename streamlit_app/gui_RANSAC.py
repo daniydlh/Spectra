@@ -3,14 +3,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
+from sklearn.linear_model import RANSACRegressor
+from sklearn.linear_model import LinearRegression
 
 
 class LinearClusterer:
     """
     Clusters data points into multiple linear patterns using RANSAC.
+    Supports both a custom RANSAC implementation and sklearn's RANSACRegressor.
     """
     
-    def __init__(self, distance_threshold=0.5, angle_threshold=0.5, angle_growth=None, angle_max=None, min_samples=5, max_clusters=15, max_iterations=200, force_origin=False, distance_type='euclidean'):
+    def __init__(self, distance_threshold=0.5, angle_threshold=0.5, angle_growth=None, angle_max=None, min_samples=5, max_clusters=15, max_iterations=200, force_origin=False, distance_type='euclidean', random_state=None,
+                 use_sklearn_ransac=False, sklearn_residual_threshold=None, sklearn_max_trials=100,
+                 sklearn_stop_probability=0.99, sklearn_loss='absolute_error', sklearn_random_state=None):
         """
         Parameters:
         -----------
@@ -20,6 +25,22 @@ class LinearClusterer:
             Minimum number of points to form a cluster
         max_clusters : int
             Maximum number of linear clusters to find
+        use_sklearn_ransac : bool
+            If True, use sklearn's RANSACRegressor for line fitting instead of custom RANSAC.
+            Compatible only with distance_type='euclidean'.
+        sklearn_residual_threshold : float or None
+            Residual threshold for sklearn RANSACRegressor. If None, uses distance_threshold.
+        sklearn_max_trials : int
+            Maximum number of trials for sklearn RANSACRegressor (default: 100).
+        sklearn_stop_probability : float
+            Stop probability for sklearn RANSACRegressor (default: 0.99).
+        sklearn_loss : str
+            Loss function for sklearn RANSACRegressor: 'absolute_error' or 'squared_error'.
+        sklearn_random_state : int or None
+            Random state for reproducibility of sklearn RANSACRegressor.
+        random_state : int or None
+            Random state for reproducibility of the custom RANSAC implementation.
+            Has no effect when use_sklearn_ransac=True (use sklearn_random_state instead).
         """
         self.distance_threshold = distance_threshold
         self.angle_threshold = angle_threshold
@@ -30,8 +51,17 @@ class LinearClusterer:
         self.max_iterations = max_iterations
         self.force_origin = force_origin
         self.distance_type = distance_type
+        self.random_state = random_state
         self.clusters_ = []
         self.labels_ = None
+
+        # sklearn RANSACRegressor parameters
+        self.use_sklearn_ransac = use_sklearn_ransac
+        self.sklearn_residual_threshold = sklearn_residual_threshold if sklearn_residual_threshold is not None else distance_threshold
+        self.sklearn_max_trials = sklearn_max_trials
+        self.sklearn_stop_probability = sklearn_stop_probability
+        self.sklearn_loss = sklearn_loss
+        self.sklearn_random_state = sklearn_random_state
 
         
     def point_to_line_distance(self, points, slope, intercept):
@@ -46,16 +76,7 @@ class LinearClusterer:
         # Distance formula: |ax + by + c| / sqrt(a^2 + b^2)
         distances = np.abs(a * points[:, 0] + b * points[:, 1] + c) / np.sqrt(a**2 + b**2)
         return distances
-    """
-    def angular_distance(self, points, slope):
-        
-        # Angular distance between points and a line through the origin
-        
-        theta_points = np.arctan2(points[:, 1], points[:, 0])
-        theta_line = np.arctan(slope)
-        dtheta = np.abs(theta_points - theta_line)
-        return np.minimum(dtheta, np.pi - dtheta)
-    """
+
     def angular_distance(self, points, slope):
         """
         # Angular distance between points and a line direction
@@ -158,17 +179,106 @@ class LinearClusterer:
         intercept = (sum_y - slope * sum_x) / n
         
         return slope, intercept
-    
+
+    # ------------------------------------------------------------------
+    # sklearn RANSACRegressor integration
+    # ------------------------------------------------------------------
+
+    def _fit_line_sklearn(self, X):
+        """
+        Fit a line to points using sklearn's RANSACRegressor.
+        Returns (slope, intercept, inlier_mask) or (None, None, None) on failure.
+
+        Notes
+        -----
+        RANSACRegressor models y as a function of x, so near-vertical lines
+        may produce a poor fit.  For those cases the method falls back to the
+        custom least-squares fitter.
+        """
+        if len(X) < max(self.min_samples, 2):
+            return None, None, None
+
+        x = X[:, 0].reshape(-1, 1)
+        y = X[:, 1]
+
+        # Check for near-vertical distribution and fall back if needed
+        x_std = np.std(X[:, 0])
+        y_std = np.std(X[:, 1])
+        if x_std < 1e-10 or (y_std > 0 and x_std / y_std < 1e-3):
+            slope, intercept = self.fit_line(X)
+            inlier_mask = np.ones(len(X), dtype=bool)
+            return slope, intercept, inlier_mask
+
+        base_estimator = LinearRegression(fit_intercept=not self.force_origin)
+
+        ransac = RANSACRegressor(
+            estimator=base_estimator,
+            min_samples=self.min_samples,
+            residual_threshold=self.sklearn_residual_threshold,
+            max_trials=self.sklearn_max_trials,
+            stop_probability=self.sklearn_stop_probability,
+            loss=self.sklearn_loss,
+            random_state=self.sklearn_random_state,
+        )
+
+        try:
+            ransac.fit(x, y)
+        except Exception:
+            return None, None, None
+
+        slope = float(ransac.estimator_.coef_[0])
+        intercept = float(ransac.estimator_.intercept_) if not self.force_origin else 0.0
+        inlier_mask = ransac.inlier_mask_
+
+        return slope, intercept, inlier_mask
+
+    def ransac_single_cluster_sklearn(self, X):
+        """
+        Find a single linear cluster using sklearn's RANSACRegressor.
+        Returns the same tuple as ransac_single_cluster for full compatibility.
+        """
+        slope, intercept, inlier_mask = self._fit_line_sklearn(X)
+
+        if slope is None or inlier_mask is None or inlier_mask.sum() < self.min_samples:
+            return None, None, None, None
+
+        best_inliers = X[inlier_mask]
+
+        # Orthogonal distances for residuals / mad
+        if np.isinf(slope):
+            ortho_distances = best_inliers[:, 0] - intercept
+        else:
+            a = -slope
+            b = 1
+            c = -intercept
+            norm = np.sqrt(a**2 + b**2)
+            ortho_distances = (a * best_inliers[:, 0] + b * best_inliers[:, 1] + c) / norm
+
+        vert_res = ortho_distances ** 2
+        mad = np.mean(np.abs(ortho_distances))
+
+        return inlier_mask, None, vert_res, (slope, intercept, np.arctan(slope), mad)
+
+    # ------------------------------------------------------------------
+
     def ransac_single_cluster(self, X, angle_threshold=None):
         """
-        Find a single linear cluster using RANSAC
+        Find a single linear cluster using RANSAC (custom implementation).
+        When use_sklearn_ransac=True this method delegates to
+        ransac_single_cluster_sklearn automatically.
         """
-        
+
+        # Delegate to sklearn if requested
+        if self.use_sklearn_ransac:
+            return self.ransac_single_cluster_sklearn(X)
+
         if angle_threshold is None:
                 angle_threshold = self.angle_threshold
 
         if len(X) < self.min_samples:
-            return None, None
+            return None, None, None, None
+
+        rng = np.random.RandomState(self.random_state)
         
         best_slope = None
         best_intercept = None
@@ -177,7 +287,7 @@ class LinearClusterer:
         
         for _ in range(self.max_iterations):
             # Randomly sample 2 points
-            sample_indices = np.random.choice(len(X), size=2, replace=False)
+            sample_indices = rng.choice(len(X), size=2, replace=False)
             sample = X[sample_indices]
             
             # Fit line through these points
@@ -209,6 +319,10 @@ class LinearClusterer:
                 best_slope = slope
                 best_intercept = intercept
         
+        # Guard: if no valid line was ever found across all iterations, bail out
+        if best_slope is None or len(best_inliers) < self.min_samples:
+            return None, None, None, None
+
         # Refit with all inliers
         if self.distance_type == 'angular':
             distances_for_histogram = self.angular_distance_histogram(X, best_slope)
@@ -909,6 +1023,7 @@ class LinearClusterer:
 
         return df_output
 
+
 """
 # Example usage and testing
 if __name__ == "__main__":
@@ -933,44 +1048,58 @@ if __name__ == "__main__":
     
     # Combine all data
     X = np.vstack(data)
-    
-    # Create and fit the clusterer
-    clusterer = LinearClusterer(
+
+    # ---------------------------------------------------------------
+    # Option A: custom RANSAC (original behaviour, unchanged)
+    # ---------------------------------------------------------------
+    clusterer_custom = LinearClusterer(
         distance_threshold=3.0,
         min_samples=10,
-        max_clusters=15
+        max_clusters=15,
+        use_sklearn_ransac=False          # default
     )
-    
-    clusterer.fit(X)
+    clusterer_custom.fit(X)
+
+    # ---------------------------------------------------------------
+    # Option B: sklearn RANSACRegressor backend
+    # ---------------------------------------------------------------
+    clusterer_sklearn = LinearClusterer(
+        distance_threshold=3.0,
+        min_samples=10,
+        max_clusters=15,
+        use_sklearn_ransac=True,
+        sklearn_residual_threshold=3.0,   # same as distance_threshold
+        sklearn_max_trials=100,
+        sklearn_stop_probability=0.99,
+        sklearn_loss='absolute_error',
+        sklearn_random_state=42
+    )
+    clusterer_sklearn.fit(X)
     
     # Print cluster information
     print("=" * 60)
-    print("LINEAR CLUSTERING RESULTS")
+    print("LINEAR CLUSTERING RESULTS  (sklearn RANSACRegressor)")
     print("=" * 60)
     print(f"\nTotal points: {len(X)}")
-    print(f"Number of clusters found: {len(clusterer.clusters_)}")
-    print(f"Unassigned points: {np.sum(clusterer.labels_ == -1)}")
+    print(f"Number of clusters found: {len(clusterer_sklearn.clusters_)}")
+    print(f"Unassigned points: {np.sum(clusterer_sklearn.labels_ == -1)}")
     print("\nCluster Details:")
     print("-" * 60)
     
-    for info in clusterer.get_cluster_info():
-        print(f"Cluster {info['Cluster ID']}: "
-              f"{info['N Points']} points, "
-              f"slope={info['Slope']}, "
-              f"intercept={info['Intercept']}")
+    for info in clusterer_sklearn.get_cluster_info():
+        if 'Cluster ID' in info:
+            print(f"Cluster {info['Cluster ID']}: "
+                  f"{info['N Points']} points, "
+                  f"slope={info['Slope']}, "
+                  f"intercept={info['Intercept']}")
     
     print("\n" + "=" * 60)
     
-    # Get cluster assignments
-    labels = clusterer.labels_
-    print(f"\nCluster assignments shape: {labels.shape}")
-    print(f"First 10 assignments: {labels[:10]}")
-    
     # Visualize results
-    clusterer.plot(X)
+    clusterer_sklearn.plot(X)
     
     # Example of predicting on new points
     new_points = np.array([[50, 25], [75, -10], [30, 40]])
-    new_labels = clusterer.predict(new_points)
+    new_labels = clusterer_sklearn.predict(new_points)
     print(f"\nNew point predictions: {new_labels}")
 """

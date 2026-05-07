@@ -64,7 +64,8 @@ if st.button("Run model", key="run_model_btn"):
             max_clusters=max_clusters,
             max_iterations=iterations,
             force_origin=True,
-            distance_type="angular"
+            distance_type="angular",
+            random_state=42
         )
         model = clusterer.fit(X)
 

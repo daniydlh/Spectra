@@ -1,4 +1,3 @@
-
 import shutil
 import polars as pl
 from Algorithms.RANSAC.RANSAC import LinearClusterer
@@ -11,7 +10,7 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
                                  ref_col_precluster, range_list, max_it_list,
                                  min_samples_list, max_clusters_list, euc_threshold_list, ang_threshold_list,
                                  angle_growth_list, angle_max, origin_cleaning_limits=None, remove_zeros=False, 
-                                 force_origin=False, distance_type='euclidean'):
+                                 force_origin=False, distance_type='angular', seed=42, sklearn_bool=False):
     
     # Check if arguments are coherent
     checks = {"Number of ranges": range_list, "Number of euclidean thresholds": euc_threshold_list,
@@ -65,7 +64,9 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
             max_clusters=max_clusters_list[j],
             max_iterations=max_it_list[j],
             force_origin=force_origin,
-            distance_type=distance_type
+            distance_type=distance_type,
+            random_state=seed,
+            use_sklearn_ransac=sklearn_bool
         )
         
         print(f"Clustering algorithm iniciated for model_{precluster_key}")
@@ -137,15 +138,11 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
                                     cols_to_fit, create_file=create_full_output_file, 
                                     selected_cols=cols, sort_by_arctan=sort_by_arctan, 
                                     model_name=m, model_path=f"{out_path}/full_output_{m}.csv")
-        print("hola")
-        print(df_output_dict[m])
-        print(type(df_output_dict[m]))
-        print("holas2")
 
         if interactive_plot is True:
             print(f"Interactive plot for {m}...")
             peak_cluster = df_output_dict[m].select(cols).filter(pl.col("cluster").is_not_null())
-            models[m].plot_interactive(X[m], lims=plot_lims_tuple, cols=cols_to_fit, peaks=peak_cluster, model_path=f"{out_path}/plot_{m}", save_html=True, save_pdf=True, zoom_lims=zoom_lims, width=600, height=600)
+            models[m].plot_interactive(X[m], lims=plot_lims_tuple, cols=cols_to_fit, peaks=peak_cluster, model_path=f"{out_path}/plot_{m}", save_html=True, save_pdf=True, zoom_lims=zoom_lims, width=600, height=600, sort_by_arctan=sort_by_arctan)
         else:
             print(f"Plot for {m}...")
             models[m].plot(X[m])
@@ -165,7 +162,6 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
                 cluster_index = cluster_id_to_index[cluster["id"]]
                 models[m].write_cluster_dat(f"{out_path}/{m}_cluster_{cluster_index}.csv", cluster_id=cluster_index)
 
-           
 
     return df_output_dict
 

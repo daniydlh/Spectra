@@ -31,7 +31,7 @@ data1 = "2025-12-19-SO2_2300k.csv"
 data2 = "2025-10-16-SO2-W_2200k.csv"
 data3 = "2025-10-16-SO2-D-W_2000k.csv"
 sep = ","
-dir = "data/spectra_dat_link/spectra"
+dir = "data/spectra_docs_link/spectra"
 
 #IMPORTANT: Use same order as in spectra list for spectra csv reading spectra[0] = spectra 1
 
@@ -61,7 +61,7 @@ df_all = concat_cols_on_freq([df_spectra1, df_spectra2, df_spectra3], cols)
 df_all_set0 = set_baseline_at_zero(df_all) #computes median and sets base line (median) at 0 (median in noise is very very similar)
 noise = only_noise(df_all_set0, 1) #noise region over 5x mean (mean always positive, 0 and negative gives errors)
 sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
-df_signals, detection_limits = apply_detection_limits(df_all_set0, sigma_list, detection_mult=3) #removes noise
+df_signals, detection_limits = apply_detection_limits(df_all, sigma_list, detection_mult=3) #removes noise
 print(detection_limits)
 
 """
