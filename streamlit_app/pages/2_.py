@@ -235,7 +235,7 @@ if "clusterer" in st.session_state:
 
             st.divider()
             st.download_button(
-                label="⬇ Download echo.csv",
+                label="⬇ Download echo.acs",
                 data=df_echo.to_csv(index=False, header=False),
                 file_name="echo.acs",
                 mime="text/csv",
