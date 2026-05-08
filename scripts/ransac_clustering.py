@@ -48,7 +48,8 @@ origin_cleaning_limits = [0., 0.]
 models, X_dict = precluster_and_cluster_RANSAC(df_int, cols_to_fit, 1, ref_col, ratio_ranges, 
                                          max_it_list, min_samples_list, max_clusters_list, euc_threshold_list, ang_threshold_list, 
                                          angle_growth_list, angle_max, origin_cleaning_limits=origin_cleaning_limits, force_origin=True, 
-                                         distance_type='angular', remove_zeros=False, seed=42, sklearn_bool=False)
+                                         distance_type='angular', remove_zeros=False, seed=42, sklearn_bool=False,
+                                         reassign=False)
 
 
 # CREATING OUTPUT AND PLOTS

@@ -10,7 +10,8 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
                                  ref_col_precluster, range_list, max_it_list,
                                  min_samples_list, max_clusters_list, euc_threshold_list, ang_threshold_list,
                                  angle_growth_list, angle_max, origin_cleaning_limits=None, remove_zeros=False, 
-                                 force_origin=False, distance_type='angular', seed=42, sklearn_bool=False):
+                                 force_origin=False, distance_type='angular', seed=42, sklearn_bool=False,
+                                 reassign=False):
     
     # Check if arguments are coherent
     checks = {"Number of ranges": range_list, "Number of euclidean thresholds": euc_threshold_list,
@@ -70,8 +71,14 @@ def precluster_and_cluster_RANSAC(df, cols_to_fit, n_preclusters,
         )
         
         print(f"Clustering algorithm iniciated for model_{precluster_key}")
-        models_preclusters_dict[f"model_{precluster_key}"] = clusterer.fit(X) # .fit() returns self so clusterer is equal to model = clusterer.fit()
-        X_dict[f"model_{precluster_key}"] = X 
+        clusterer.fit(X)
+
+        # Reassign all points (including unassigned) to nearest cluster line
+        if reassign:
+            clusterer.reassign_by_angular_proximity(X, distance_mode='angular')
+
+        models_preclusters_dict[f"model_{precluster_key}"] = clusterer
+        X_dict[f"model_{precluster_key}"] = X
 
     return models_preclusters_dict, X_dict
 
@@ -142,7 +149,10 @@ def write_model_info_and_plots(models, X, df_ref_peaks, cols_to_fit, rltv_path, 
         if interactive_plot is True:
             print(f"Interactive plot for {m}...")
             peak_cluster = df_output_dict[m].select(cols).filter(pl.col("cluster").is_not_null())
-            models[m].plot_interactive(X[m], lims=plot_lims_tuple, cols=cols_to_fit, peaks=peak_cluster, model_path=f"{out_path}/plot_{m}", save_html=True, save_pdf=True, zoom_lims=zoom_lims, width=600, height=600, sort_by_arctan=sort_by_arctan)
+            models[m].plot_interactive(X[m], lims=plot_lims_tuple, cols=cols_to_fit, peaks=peak_cluster,
+                                         model_path=f"{out_path}/plot_{m}", save_html=True,
+                                          save_pdf=True, zoom_lims=zoom_lims, width=600,
+                                           height=600, sort_by_arctan=sort_by_arctan)
         else:
             print(f"Plot for {m}...")
             models[m].plot(X[m])

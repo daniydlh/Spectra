@@ -48,6 +48,7 @@ if st.sidebar.button("Restore default parameters"):
     st.rerun()
 
 # --- RUN ---
+reassign = st.checkbox("Reassign by angular proximity after fitting", value=True, key="reassign_proximity")
 if st.button("Run model", key="run_model_btn"):
     x = df_peaks[col_names[0]].to_numpy()
     y = df_peaks[col_names[1]].to_numpy()
@@ -67,7 +68,10 @@ if st.button("Run model", key="run_model_btn"):
             distance_type="angular",
             random_state=42
         )
-        model = clusterer.fit(X)
+        clusterer.fit(X)
+        if reassign:
+            clusterer.reassign_by_angular_proximity(X, distance_mode='angular')
+        model = clusterer
 
     cols = ['freq', col_names[0], col_names[1], 'cluster']
     df_output = model.write_df_output(
