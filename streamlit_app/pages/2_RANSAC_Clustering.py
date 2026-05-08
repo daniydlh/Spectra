@@ -4,6 +4,77 @@ import polars as pl
 import numpy as np
 from gui_RANSAC import LinearClusterer
 
+st.set_page_config(
+    page_title="RANSAC Clustering",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown("""
+<style>
+[data-testid="stAppViewContainer"] > .main > .block-container {
+    max-width: 1600px !important;
+    padding-left: 3rem !important;
+    padding-right: 3rem !important;
+}
+
+/* ── Run button ── */
+@keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+}
+
+.run-btn-wrapper {
+    margin: 1.2rem 0 1.5rem 0;
+}
+
+.run-btn-wrapper [data-testid="stButton"] > button {
+    width: 100% !important;
+    background: #0f172a !important;
+    background-image: linear-gradient(
+        105deg,
+        transparent 30%,
+        rgba(255,255,255,0.07) 48%,
+        rgba(255,255,255,0.13) 50%,
+        rgba(255,255,255,0.07) 52%,
+        transparent 70%
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: shimmer 2.8s linear infinite !important;
+    color: #e2e8f0 !important;
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    padding: 0.85rem 1rem !important;
+    border-radius: 6px !important;
+    border: 1px solid rgba(148,163,184,0.2) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 12px rgba(0,0,0,0.3) !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+.run-btn-wrapper [data-testid="stButton"] > button:hover {
+    border-color: rgba(148,163,184,0.45) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 20px rgba(0,0,0,0.4) !important;
+    color: #ffffff !important;
+}
+
+.run-btn-wrapper [data-testid="stButton"] > button:active {
+    transform: scale(0.995) !important;
+}
+
+/* Plotly chart card */
+[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    box-shadow: 0 6px 32px rgba(0,0,0,0.22), 0 1.5px 6px rgba(0,0,0,0.14) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    margin-bottom: 0.5rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ── Guards ────────────────────────────────────────────────────────────────────
 if "df_peaks" not in st.session_state:
     st.warning("Upload spectra in Spectra Analysis page.")
     st.stop()
@@ -21,6 +92,7 @@ if df_peaks.empty:
     st.warning("No peaks found. Check page 1 parameters.")
     st.stop()
 
+# ── Defaults ──────────────────────────────────────────────────────────────────
 DEFAULTS = {
     "ang": 0.04,
     "ang_growth": 0.0,
@@ -34,7 +106,7 @@ if st.session_state.get("_reset_params"):
         st.session_state[key] = val
     st.session_state["_reset_params"] = False
 
-# --- SIDEBAR ---
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 ang = st.sidebar.number_input("Angular threshold", step=0.005, key="ang", value=0.04, format="%.4f")
 max_clusters = st.sidebar.number_input("Maximum clusters", step=1, key="max_clust", value=30)
 
@@ -47,16 +119,17 @@ if st.sidebar.button("Restore default parameters"):
     st.session_state["_reset_params"] = True
     st.rerun()
 
-# --- RUN ---
+# ── Run controls ──────────────────────────────────────────────────────────────
 reassign = st.checkbox("Reassign by angular proximity after fitting", value=True, key="reassign_proximity")
-if st.button("Run model", key="run_model_btn"):
+run_clicked = st.button("RUN MODEL", key="run_model_btn", use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+if run_clicked:
     x = df_peaks[col_names[0]].to_numpy()
     y = df_peaks[col_names[1]].to_numpy()
     X = np.column_stack((x, y))
 
-    st.write(f"Fitting {X.shape[0]} points...")
-
-    with st.spinner("Running model..."):
+    with st.spinner(f"Fitting {X.shape[0]} points..."):
         clusterer = LinearClusterer(
             angle_threshold=ang,
             angle_growth=ang_growth,
@@ -89,7 +162,7 @@ if st.button("Run model", key="run_model_btn"):
     freqs = df_peaks["freq"].to_numpy()
     with st.spinner("Plotting model"):
         fig = model.plot_interactive(
-            X, width=800, height=600,
+            X, width=800, height=700,
             lims=None, cols=col_names, zoom_lims=None,
             peaks=peak_cluster,
             freqs=freqs,
@@ -102,21 +175,49 @@ if st.button("Run model", key="run_model_btn"):
     st.session_state["model_info"] = (len(model.clusters_), len(model.unassigned))
     st.session_state["peak_cluster_csv"] = peak_cluster.to_pandas().to_csv(index=False)
     st.session_state["clusterer"] = model
+    st.session_state["model_params"] = {
+        "ang": ang,
+        "ang_growth": ang_growth,
+        "ang_max": ang_max,
+        "max_clusters": max_clusters,
+        "iterations": iterations,
+        "reassign": reassign,
+    }
 
-# --- DISPLAY RESULTS ---
+# ── Display results ───────────────────────────────────────────────────────────
 if "model_fig" in st.session_state:
+
     n_clusters, n_unassigned = st.session_state["model_info"]
+    p = st.session_state["model_params"]
+
     st.success("Model ran successfully!")
-    st.info(f"**Clusters found:** {n_clusters} | **Unassigned points:** {n_unassigned}")
+
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        st.info(f"**Clusters found:** {n_clusters} | **Unassigned points:** {n_unassigned}")
+    with col_b:
+        param_str = (
+            f"**Angle:** {p['ang']:.4f} | "
+            f"**Max clusters:** {p['max_clusters']} | "
+            f"**Iterations:** {p['iterations']} | "
+            f"**Angle growth:** {p['ang_growth']:.4f} | "
+            f"**Angle max:** {p['ang_max']:.4f} | "
+            f"**Reassign by proximity:** {'Yes' if p['reassign'] else 'No'}"
+        )
+        st.info(param_str)
+
     st.download_button(
-        "Download cluster assignation (CSV)",
+        "⬇ Download cluster assignation (CSV)",
         st.session_state["peak_cluster_csv"],
         "cluster_output.csv",
-        key="download_cluster"
+        key="download_cluster",
+        use_container_width=True,
+        type="primary",
     )
+
     st.plotly_chart(st.session_state["model_fig"], use_container_width=True)
 
-# --- CLUSTER INSPECTOR ---
+# ── Cluster inspector ─────────────────────────────────────────────────────────
 if "clusterer" in st.session_state:
     clusterer = st.session_state["clusterer"]
     clusters = clusterer.clusters_
@@ -126,7 +227,6 @@ if "clusterer" in st.session_state:
 
     sorted_clusters = sorted(clusters, key=lambda c: float(c["arctan"]))
 
-    # Build mapping: original cluster id → arctan-sorted display index
     orig_id_to_display_idx = {
         c["id"]: i for i, c in enumerate(sorted_clusters)
     }
@@ -143,7 +243,6 @@ if "clusterer" in st.session_state:
         placeholder="Select one or more clusters..."
     )
 
-    # --- ONE EXPANDER PER SELECTED CLUSTER ---
     for label in selected_labels:
         display_idx = cluster_options[label]
         c = sorted_clusters[display_idx]
@@ -184,6 +283,7 @@ if "clusterer" in st.session_state:
                 height=300,
                 show_fig=False,
             )
+            fig_hist.update_layout(title=f"Angular distance histogram of each point to the cluster {display_idx} ray ")
             st.plotly_chart(fig_hist, use_container_width=True, key=f"hist_{display_idx}")
 
             st.download_button(
@@ -191,19 +291,18 @@ if "clusterer" in st.session_state:
                 data=df_pts.to_csv(index=False),
                 file_name=f"cluster_{display_idx}_arctan{c['arctan']:.4f}.csv",
                 mime="text/csv",
-                key=f"dl_cluster_{display_idx}"
+                key=f"dl_cluster_{display_idx}",
+                use_container_width=True
             )
 
-    # --- ECHO FILE ---
+    # ── Echo file ─────────────────────────────────────────────────────────────
     if selected_labels:
-        # Collect original IDs of selected clusters
         selected_orig_ids = set()
         for label in selected_labels:
             display_idx = cluster_options[label]
             c = sorted_clusters[display_idx]
             selected_orig_ids.add(c["id"])
 
-        # Exclude selected clusters and unassigned points (-1)
         echo_mask = np.isin(clusterer.labels_, list(selected_orig_ids), invert=True) \
                     & (clusterer.labels_ != -1)
         echo_indices = np.where(echo_mask)[0]
@@ -216,7 +315,6 @@ if "clusterer" in st.session_state:
             echo_xy = X_full[echo_indices]
             df_echo = pd.DataFrame(echo_xy, columns=[col_names[0], col_names[1]])
 
-            # Use arctan-sorted display index instead of original cluster id
             df_echo["cluster"] = [
                 orig_id_to_display_idx.get(clusterer.labels_[i], -1)
                 for i in echo_indices
@@ -244,8 +342,8 @@ if "clusterer" in st.session_state:
                 file_name="echo.acs",
                 mime="text/csv",
                 key="download_echo",
-                use_container_width=True,  # makes it wide
-                type="primary",            # gives it the blue filled style
+                use_container_width=True,
+                type="primary",
             )
         else:
             st.info("No points remain for the echo file after excluding selected clusters.")
