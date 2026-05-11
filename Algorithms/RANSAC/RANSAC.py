@@ -789,6 +789,150 @@ class LinearClusterer:
 
         return fig
         
+    def reassign_by_angular_proximity(self, X, include_unassigned=True, distance_mode='angular'):
+        """
+        Reassign all points to clusters based on proximity to each cluster's
+        fitted line, using either angular or orthogonal distance.
+
+        After RANSAC clustering is complete, this method ignores the original
+        assignments and reassigns every point (including previously unassigned
+        ones, if ``include_unassigned=True``) to whichever cluster is closest
+        under the chosen metric.
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, 2)
+            The full point cloud used during ``fit``.
+        include_unassigned : bool, default True
+            If True  – every point in X is reassigned (nothing stays at -1).
+            If False – only points that already belong to a cluster are
+            reassigned; points that were unassigned remain unassigned.
+        distance_mode : {'angular', 'orthogonal'}, default 'angular'
+            'angular'    – assigns each point to the cluster whose ray
+                           direction is angularly closest to the point's own
+                           direction from the origin: arccos(|p̂ · v̂|).
+                           Purely directional, independent of line distance.
+            'orthogonal' – assigns each point to the cluster whose fitted
+                           line is orthogonally (perpendicularly) closest.
+                           Equivalent to nearest-line in Euclidean space.
+
+        Returns
+        -------
+        self
+        """
+        X = np.array(X)
+
+        if len(self.clusters_) == 0:
+            raise RuntimeError("No clusters found. Run fit() first.")
+
+        if distance_mode not in ('angular', 'orthogonal'):
+            raise ValueError("distance_mode must be 'angular' or 'orthogonal'.")
+
+        # Precompute unit direction vectors (needed for angular mode)
+        cluster_directions = []
+        for c in self.clusters_:
+            slope = c['slope']
+            if np.isinf(slope):
+                v = np.array([0.0, 1.0])
+            else:
+                v = np.array([1.0, slope])
+            v = v / np.linalg.norm(v)
+            cluster_directions.append(v)
+
+        # Decide which point indices to (re)assign
+        if include_unassigned:
+            candidate_indices = np.arange(len(X))
+        else:
+            candidate_indices = np.where(self.labels_ != -1)[0]
+
+        new_labels = self.labels_.copy()
+
+        if distance_mode == 'angular':
+            for idx in candidate_indices:
+                p = X[idx]
+                norm_p = np.linalg.norm(p)
+                if norm_p < 1e-12:
+                    new_labels[idx] = self.clusters_[0]['id']
+                    continue
+                p_hat = p / norm_p
+                best_cluster_id = None
+                best_angle = np.inf
+                for c, v in zip(self.clusters_, cluster_directions):
+                    cos_theta = np.clip(np.abs(np.dot(p_hat, v)), 0.0, 1.0)
+                    angle = np.arccos(cos_theta)   # in [0, π/2]
+                    if angle < best_angle:
+                        best_angle = angle
+                        best_cluster_id = c['id']
+                new_labels[idx] = best_cluster_id
+
+        else:  # orthogonal
+            # Vectorised: compute distance from all candidate points to each
+            # cluster line, then take argmin.
+            pts = X[candidate_indices]          # (N, 2)
+            n_clusters = len(self.clusters_)
+            dist_matrix = np.full((len(pts), n_clusters), np.inf)
+
+            for j, c in enumerate(self.clusters_):
+                slope = c['slope']
+                intercept = c['intercept']
+                if np.isinf(slope):
+                    dist_matrix[:, j] = np.abs(pts[:, 0] - intercept)
+                else:
+                    dist_matrix[:, j] = self.point_to_line_distance(pts, slope, intercept)
+
+            best_j = np.argmin(dist_matrix, axis=1)
+            for k, idx in enumerate(candidate_indices):
+                new_labels[idx] = self.clusters_[best_j[k]]['id']
+
+        self.labels_ = new_labels
+
+        # ------------------------------------------------------------------
+        # Rebuild per-cluster 'points', 'n_points', distances, residuals, mad
+        # ------------------------------------------------------------------
+        for c, v in zip(self.clusters_, cluster_directions):
+            cid = c['id']
+            mask = self.labels_ == cid
+            pts = X[mask]
+            c['points'] = pts
+            c['n_points'] = len(pts)
+
+            if len(pts) == 0:
+                c['point_distance'] = np.array([])
+                c['residuals'] = np.array([])
+                c['mad'] = 0.0
+                continue
+
+            slope = c['slope']
+            intercept = c['intercept']
+
+            if self.distance_type == 'angular':
+                # Signed angular distances (for histogram compatibility)
+                angles = self.angular_distance_histogram(pts, slope)
+                c['point_distance'] = angles
+                c['residuals'] = angles ** 2
+                c['mad'] = float(np.mean(np.abs(angles)))
+            else:
+                if np.isinf(slope):
+                    ortho = pts[:, 0] - intercept
+                else:
+                    a = -slope
+                    b = 1.0
+                    cc = -intercept
+                    norm_line = np.sqrt(a ** 2 + b ** 2)
+                    ortho = (a * pts[:, 0] + b * pts[:, 1] + cc) / norm_line
+                c['point_distance'] = ortho
+                c['residuals'] = ortho ** 2
+                c['mad'] = float(np.mean(np.abs(ortho)))
+
+        # ------------------------------------------------------------------
+        # Update unassigned (only relevant when include_unassigned=False)
+        # ------------------------------------------------------------------
+        unassigned_indices = np.where(self.labels_ == -1)[0]
+        self.unassigned = unassigned_indices
+        self.unassigned_vals = [X[i] for i in unassigned_indices]
+
+        return self
+
     def get_cluster_info(self):
         """
         Get information about each cluster
@@ -1022,7 +1166,7 @@ class LinearClusterer:
                     .is_not_null()).sort("freq").write_csv(model_path,float_precision=8)
 
         return df_output
-
+    
 
 """
 # Example usage and testing
