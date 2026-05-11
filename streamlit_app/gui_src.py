@@ -6,7 +6,7 @@ from typing import Iterable, Tuple, Sequence
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def pipeline_spectra_GUI(df, sigma=None, multiplier=None, freq_col='freq', cols=None):
+def pipeline_spectra_GUI(df, sigma=None, multiplier=None, freq_col='freq', cols=None, remove_zeros=False):
     df = pl.from_pandas(df)
     df_clean, detection_limits = apply_detection_limits(df, sigma_list=sigma, detection_mult=multiplier)
     peak_dict = detect_peaks(df_clean) #gets freq of each peak above noise
@@ -15,6 +15,10 @@ def pipeline_spectra_GUI(df, sigma=None, multiplier=None, freq_col='freq', cols=
     df_peaks = get_int_at_peaks_AIopt(all_peaks, df_clean, return_df=True) #using df_signals so freq is 0 if peak is bloew signal
     df_peaks = unique_by_freq_keep_max3(df_peaks, "freq", cols, tol=0.05)
     df_peaks = df_peaks.sort("freq")
+
+    # Removing rows with a 0 in columns to fit (optional)
+    if remove_zeros is True:
+        df_peaks = df_peaks.filter((pl.col(cols[0]) != 0.) & (pl.col(cols[1]) != 0.))
 
     df = df.to_pandas()
     df_clean = df_clean.to_pandas()
@@ -240,3 +244,22 @@ def get_int_at_peaks_AIopt(peak_freqs, df, return_df = False):
         return df_peaks
 
     return intensities
+
+def freqs_df_to_cluster(df_input_freqs, df_model_freqs, tol):
+    freq_col = df_input_freqs.columns[0]
+    model_freq_col = df_model_freqs.columns[0]
+    cluster_col = df_model_freqs.columns[1]
+
+    model_freqs_arr = df_model_freqs[model_freq_col].to_numpy()
+    cluster_arr = df_model_freqs[cluster_col].to_numpy()
+
+    def find_cluster(freq):
+        diffs = np.abs(model_freqs_arr - freq)  # pure numpy from the start
+        min_diff = diffs.min()
+        if min_diff <= tol:
+            return cluster_arr[diffs.argmin()]
+        return "not_found"
+
+    result_df = df_input_freqs.copy()
+    result_df["cluster"] = result_df[freq_col].apply(find_cluster)
+    return result_df

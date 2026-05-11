@@ -512,7 +512,7 @@ class LinearClusterer:
         plt.tight_layout()
         plt.show()
 
-    def plot_interactive(self, X, width=800, height=600, lims=None, cols=None, zoom_lims=None, peaks=None, freqs=None, show_fig=True, save_html=None, save_pdf=None, model_path=None, sort_by_arctan=False):
+    def plot_interactive(self, X, width=800, height=600, lims=None, cols=None, zoom_lims=None, axis=None, peaks=None, freqs=None, show_fig=True, save_html=None, save_pdf=None, model_path=None, sort_by_arctan=False):
         """
         Create an interactive visualization using Plotly
         """
@@ -726,8 +726,8 @@ class LinearClusterer:
                 'xanchor': 'center',
                 'font': {'size': 22}
             },
-            xaxis_title='Intensity (µV) 1',
-            yaxis_title='Intensity (µV) 2',
+            xaxis_title=f'Intensity {axis[0]} (µV)  ',
+            yaxis_title=f'Intensity {axis[1]} (µV)',
             width=width,
             height=height,
             hovermode='closest',
@@ -931,6 +931,159 @@ class LinearClusterer:
         self.unassigned = unassigned_indices
         self.unassigned_vals = [X[i] for i in unassigned_indices]
 
+        return self
+
+    def iterative_refinement(
+        self,
+        X,
+        max_iterations=20,
+        convergence_threshold=0.0,
+        distance_mode="angular",
+        verbose=True,
+    ):
+        """
+        Iteratively refine cluster assignments by alternating between:
+          1. Reassigning every point to its closest cluster line
+             (angular or orthogonal proximity, via reassign_by_angular_proximity).
+          2. Refitting each cluster's regression line to its newly assigned points.
+
+        Convergence is declared when the maximum change in cluster population
+        across all clusters is <= ``convergence_threshold`` (default 0 means
+        no point changed cluster).
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, 2)
+            The full point cloud (same array passed to fit()).
+        max_iterations : int, default 20
+            Hard upper limit on refinement rounds.
+        convergence_threshold : float, default 0.0
+            Stop early when ``max |n_points_new - n_points_old|`` across all
+            clusters is <= this value.  Use 0 for strict convergence (no point
+            moved), or a small positive integer (e.g. 2) for loose convergence.
+        distance_mode : {'angular', 'orthogonal'}, default 'angular'
+            Proximity metric forwarded to reassign_by_angular_proximity.
+        verbose : bool, default True
+            Print a one-line summary per iteration.
+
+        Returns
+        -------
+        self
+            The clusterer with updated labels_, clusters_, unassigned, and
+            unassigned_vals.
+
+        Notes
+        -----
+        * Only clusters with >= self.min_samples points are refitted.
+          Clusters that lose too many points keep their previous line.
+        * The method updates cluster['slope'], cluster['intercept'],
+          cluster['arctan'], cluster['mad'], cluster['points'],
+          cluster['n_points'], cluster['point_distance'], and
+          cluster['residuals'] in place.
+        * After the loop, unassigned / unassigned_vals reflect any points
+          whose cluster was not refitted (edge case: all clusters shrank below
+          min_samples — practically impossible but handled gracefully).
+        """
+        X = np.array(X)
+
+        if len(self.clusters_) == 0:
+            raise RuntimeError("No clusters found. Run fit() first.")
+
+        if verbose:
+            print(
+                f"{'Iter':>5}  {'Max ΔN':>9}  {'Converged':>10}  "
+                f"{'Populations'}"
+            )
+            print("-" * 72)
+
+        for iteration in range(1, max_iterations + 1):
+
+            # ── snapshot of current populations ──────────────────────────────
+            prev_populations = {c["id"]: c["n_points"] for c in self.clusters_}
+
+            # ── Step 1: reassign every point to nearest cluster line ──────────
+            self.reassign_by_angular_proximity(
+                X,
+                include_unassigned=True,
+                distance_mode=distance_mode,
+            )
+
+            # ── Step 2: refit each cluster's line to its new members ──────────
+            for c in self.clusters_:
+                pts = c["points"]          # already updated by reassign_…
+
+                if len(pts) < self.min_samples:
+                    # Not enough points — keep the old line, skip refit
+                    if verbose:
+                        print(
+                            f"  [iter {iteration}] cluster {c['id']} has only "
+                            f"{len(pts)} pts — skipping refit."
+                        )
+                    continue
+
+                new_slope, new_intercept = self.fit_line(pts)
+
+                if new_slope is None:
+                    continue            # degenerate — keep old line
+
+                # Update line parameters
+                c["slope"]     = new_slope
+                c["intercept"] = new_intercept
+                c["arctan"]    = float(np.arctan(new_slope)) if not np.isinf(new_slope) else np.pi / 2
+
+                # Recompute distances / residuals / mad with new line
+                if self.distance_type == "angular":
+                    angles        = self.angular_distance_histogram(pts, new_slope)
+                    c["point_distance"] = angles
+                    c["residuals"]      = angles ** 2
+                    c["mad"]            = float(np.mean(np.abs(angles)))
+                else:
+                    if np.isinf(new_slope):
+                        ortho = pts[:, 0] - new_intercept
+                    else:
+                        a    = -new_slope
+                        b    = 1.0
+                        cc   = -new_intercept
+                        norm = np.sqrt(a ** 2 + b ** 2)
+                        ortho = (a * pts[:, 0] + b * pts[:, 1] + cc) / norm
+                    c["point_distance"] = ortho
+                    c["residuals"]      = ortho ** 2
+                    c["mad"]            = float(np.mean(np.abs(ortho)))
+
+            # ── Step 3: check convergence ─────────────────────────────────────
+            new_populations  = {c["id"]: c["n_points"] for c in self.clusters_}
+            population_delta = {
+                cid: abs(new_populations[cid] - prev_populations[cid])
+                for cid in new_populations
+            }
+            max_delta = max(population_delta.values())
+
+            if verbose:
+                pop_str = "  ".join(
+                    f"C{cid}:{new_populations[cid]}"
+                    for cid in sorted(new_populations)
+                )
+                converged_str = "YES" if max_delta <= convergence_threshold else "no"
+                print(
+                    f"{iteration:>5}  {max_delta:>9}  {converged_str:>10}  {pop_str}"
+                )
+
+            if max_delta <= convergence_threshold:
+                if verbose:
+                    print(
+                        f"\nConverged after {iteration} iteration(s) "
+                        f"(max ΔN = {max_delta} ≤ threshold {convergence_threshold})."
+                    )
+                break
+
+        else:
+            if verbose:
+                print(
+                    f"\nReached max_iterations={max_iterations} without "
+                    f"convergence (last max ΔN = {max_delta})."
+                )
+        # after the for/else block, just before `return self`
+        self.n_iterations_ = iteration
         return self
 
     def get_cluster_info(self):
@@ -1166,6 +1319,8 @@ class LinearClusterer:
                     .is_not_null()).sort("freq").write_csv(model_path,float_precision=8)
 
         return df_output
+
+    
     
 
 """

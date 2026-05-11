@@ -124,9 +124,16 @@ if 'dfs_stored' in st.session_state:
     )
     st.session_state['mult_stored'] = mult
 
+
     if st.sidebar.button("Restore initial parameters"):
         st.session_state["_reset_spectra_params"] = True
         st.rerun()
+
+    remove_zeros = st.checkbox("Remove frequency if it is below the detection limit in one of the two spectra",
+            value=False,
+            key="remove_zeros")
+                
+    st.session_state['removes_zeros'] = remove_zeros
 
     # --- RUN PIPELINE ---
     df, df_clean, df_peaks, detection_limits, peaks_array = pipeline_spectra_GUI(
@@ -134,13 +141,16 @@ if 'dfs_stored' in st.session_state:
         sigma=sigma_list,
         multiplier=mult,
         freq_col='freq',
-        cols=col_names
+        cols=col_names,
+        remove_zeros=remove_zeros
     )
 
     st.session_state['df_peaks'] = df_peaks
     st.info(f"Current peaks found: **{len(df_peaks)}** | Sigma: {[f'{s:.6f}' for s in sigma_list]} | Multiplier: {mult}")
+
+    
     st.download_button(
-        "Download maximum intensities (CSV)",
+        "⬇ Download maximum intensities (CSV)",
         df_peaks.to_csv(index=False),
         "freq_maxint_output.csv",
         key="download_df_peaks"
