@@ -115,7 +115,7 @@ ang = st.sidebar.number_input("Angular threshold", step=0.005, key="ang", value=
 max_clusters = st.sidebar.number_input("Maximum clusters", step=1, key="max_clust", value=30)
 
 if refine_em:
-    with st.sidebar.expander("EM alogrithm"):
+    with st.sidebar.expander("EM algorithm"):
         max_em_it = st.number_input("Maximum EM iterations", step=10, key="max_em_it", value=100)
         conv = st.number_input("Convergence threshold", step=1, key="conv", value=0)
 
