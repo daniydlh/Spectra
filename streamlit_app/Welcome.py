@@ -1,8 +1,13 @@
 import streamlit as st
 
-st.title("RANSAC Based Intensity Ratio method")
+st.title("Intensity based methods")
 
 st.write("""
 Welcome to the spectroscopy analysis tool.
 Use the sidebar to navigate between modules.
 """)
+
+st.write("""
+While s
+""")
+
