@@ -177,7 +177,7 @@ if st.sidebar.button("Restore default parameters", key="dbscan_restore"):
     st.rerun()
 
 # ── Run controls ──────────────────────────────────────────────────────────────
-run_clicked = st.button("RUN MODEL", key="dbscan_run_model_btn", use_container_width=True)
+run_clicked = st.button("RUN MODEL", key="dbscan_run_model_btn", width="stretch")
 st.markdown('</div>', unsafe_allow_html=True)
 
 if run_clicked:
@@ -306,11 +306,11 @@ if "dbscan_model_fig" in st.session_state:
         st.session_state["dbscan_peak_cluster_csv"],
         "dbscan_cluster_output.csv",
         key="dbscan_download_cluster",
-        use_container_width=True,
+        width="stretch",
         type="primary",
     )
 
-    st.plotly_chart(st.session_state["dbscan_model_fig"], use_container_width=True)
+    st.plotly_chart(st.session_state["dbscan_model_fig"], width="stretch")
 
     st.subheader("Check the cluster of specific lines")
 
@@ -356,7 +356,7 @@ if "dbscan_model_fig" in st.session_state:
                     assigned_freqs.to_csv(index=False),
                     "dbscan_freqs_to_cluster.csv",
                     key="dbscan_download_specific_freq",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary",
                 )
 
@@ -415,7 +415,7 @@ if "dbscan_clusterer" in st.session_state:
             df_pts = df_pts[["freq", col_names[0], col_names[1]]]
             df_pts.index.name = "point"
 
-            st.dataframe(df_pts, use_container_width=True, height=300)
+            st.dataframe(df_pts, width="stretch", height=300)
 
             fig_hist = clusterer.interactive_distance_histogram(
                 cluster_id=c["id"],
@@ -429,7 +429,7 @@ if "dbscan_clusterer" in st.session_state:
             )
             st.plotly_chart(
                 fig_hist,
-                use_container_width=True,
+                width="stretch",
                 key=f"dbscan_hist_{display_idx}",
             )
 
@@ -439,7 +439,7 @@ if "dbscan_clusterer" in st.session_state:
                 file_name=f"dbscan_cluster_{display_idx}_arctan{c['arctan']:.4f}.csv",
                 mime="text/csv",
                 key=f"dbscan_dl_cluster_{display_idx}",
-                use_container_width=True,
+                width="stretch",
             )
 
     # ── Echo file ─────────────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ if "dbscan_clusterer" in st.session_state:
                 file_name="echo.acs",
                 mime="text/csv",
                 key="dbscan_download_echo",
-                use_container_width=True,
+                width="stretch",
                 type="primary",
             )
         else:

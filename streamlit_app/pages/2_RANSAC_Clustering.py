@@ -131,7 +131,7 @@ if st.sidebar.button("Restore default parameters"):
 # ── Run controls ──────────────────────────────────────────────────────────────
 #reassign = st.checkbox("Reassign by angular proximity after fitting", value=True, key="reassign_proximity")
 
-run_clicked = st.button("RUN MODEL", key="run_model_btn", use_container_width=True)
+run_clicked = st.button("RUN MODEL", key="run_model_btn", width="stretch")
 st.markdown('</div>', unsafe_allow_html=True)
 
 if run_clicked:
@@ -227,11 +227,11 @@ if "model_fig" in st.session_state:
         st.session_state["peak_cluster_csv"],
         "cluster_output.csv",
         key="download_cluster",
-        use_container_width=True,
+        width="stretch",
         type="primary",
     )
 
-    st.plotly_chart(st.session_state["model_fig"], use_container_width=True)
+    st.plotly_chart(st.session_state["model_fig"], width="stretch")
 
     st.subheader("Check the cluster of specific lines")
 
@@ -274,7 +274,7 @@ if "model_fig" in st.session_state:
                     assigned_freqs.to_csv(index=False),
                     "freqs_to_cluster.csv",
                     key="download_specific_freq",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary",
                 )
             elif uploaded_freqs and freq_cluster is None:
@@ -337,7 +337,7 @@ if "clusterer" in st.session_state:
             df_pts = df_pts[["freq", col_names[0], col_names[1]]]
             df_pts.index.name = "point"
 
-            st.dataframe(df_pts, use_container_width=True, height=300)
+            st.dataframe(df_pts, width="stretch", height=300)
 
             fig_hist = clusterer.interactive_distance_histogram(
                 cluster_id=c["id"],
@@ -347,7 +347,7 @@ if "clusterer" in st.session_state:
                 show_fig=False,
             )
             fig_hist.update_layout(title=f"Angular distance histogram of each point to the cluster {display_idx} ray ")
-            st.plotly_chart(fig_hist, use_container_width=True, key=f"hist_{display_idx}")
+            st.plotly_chart(fig_hist, width="stretch", key=f"hist_{display_idx}")
 
             st.download_button(
                 label=f"⬇ Download cluster {display_idx} points (CSV)",
@@ -355,7 +355,7 @@ if "clusterer" in st.session_state:
                 file_name=f"cluster_{display_idx}_arctan{c['arctan']:.4f}.csv",
                 mime="text/csv",
                 key=f"dl_cluster_{display_idx}",
-                use_container_width=True
+                width="stretch"
             )
 
     # ── Echo file ─────────────────────────────────────────────────────────────
@@ -405,7 +405,7 @@ if "clusterer" in st.session_state:
                 file_name="echo.acs",
                 mime="text/csv",
                 key="download_echo",
-                use_container_width=True,
+                width="stretch",
                 type="primary",
             )
         else:

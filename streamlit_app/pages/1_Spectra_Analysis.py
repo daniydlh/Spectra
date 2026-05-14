@@ -232,4 +232,4 @@ if 'dfs_stored' in st.session_state:
             ),
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
