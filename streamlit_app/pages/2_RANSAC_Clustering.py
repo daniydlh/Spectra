@@ -1,3 +1,4 @@
+import copy
 import streamlit as st
 import pandas as pd
 import polars as pl
@@ -231,8 +232,11 @@ if "model_fig" in st.session_state:
         type="primary",
     )
 
+<<<<<<< HEAD
     st.plotly_chart(st.session_state["model_fig"], width="stretch")
 
+=======
+>>>>>>> 6680dfe (Highlight input freqs on plot on-the-fly)
     st.subheader("Check the cluster of specific lines")
 
     col1, col2 = st.columns(2)
@@ -246,27 +250,33 @@ if "model_fig" in st.session_state:
 
     with col2:
         match_tol = st.number_input("Matching tolerance (MHz)", step=0.01, key="tol", value=0.01, format="%.3f")
-    
-    if uploaded_freqs:
-        freq_cluster = st.session_state.get("freq_cluster")  # ← fetch from session state
 
+    # ── Parse uploaded frequencies and build highlight set ────────────────────
+    highlighted_freqs = set()
+    assigned_freqs = None
+
+    if uploaded_freqs:
+        freq_cluster = st.session_state.get("freq_cluster")
         if freq_cluster is None:
             st.warning("Run the model first before uploading frequencies.")
         else:
             df_raw_input = pd.read_csv(uploaded_freqs, header=None)
-
             if isinstance(df_raw_input.iloc[0, 0], str) and "freq" in df_raw_input.iloc[0, 0].lower():
                 df_input = df_raw_input.iloc[1:].reset_index(drop=True)
             else:
                 df_input = df_raw_input
-
             df_input.columns = ["freq"] + list(df_input.columns[1:])
             df_input["freq"] = pd.to_numeric(df_input["freq"])
 
             assigned_freqs = freqs_df_to_cluster(df_input, freq_cluster, tol=match_tol)
 
-            freq_cluster = st.session_state.get("freq_cluster")
+            # Build set of matched model frequencies
+            all_model_freqs = freq_cluster["freq"].to_numpy()
+            for f_query in df_input["freq"].to_numpy():
+                matches = all_model_freqs[np.abs(all_model_freqs - f_query) <= match_tol]
+                highlighted_freqs.update(matches.tolist())
 
+<<<<<<< HEAD
             if uploaded_freqs and freq_cluster is not None:
                 ...
                 st.download_button(
@@ -279,6 +289,71 @@ if "model_fig" in st.session_state:
                 )
             elif uploaded_freqs and freq_cluster is None:
                 st.warning("Run the model first.")
+=======
+            st.download_button(
+                "⬇ Download assigned clusters (CSV)",
+                assigned_freqs.to_csv(index=False),
+                "freqs_to_cluster.csv",
+                key="download_specific_freq",
+                use_container_width=True,
+                type="primary",
+            )
+
+    # ── Build display figure (highlight or normal) ────────────────────────────
+    DIM_OPACITY = 0.06
+
+    def _hex_to_rgba(hex_color, alpha):
+        hex_color = hex_color.lstrip("#")
+        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
+    def _parse_freq_from_hovertext(text):
+        """Extract the numeric freq value from a Plotly hover string."""
+        try:
+            return float(str(text).split("Freq: ")[1].split("<br>")[0])
+        except (IndexError, ValueError):
+            return None
+
+    if highlighted_freqs:
+        display_fig = copy.deepcopy(st.session_state["model_fig"])
+
+        for trace in display_fig.data:
+            texts = getattr(trace, "text", None)
+            if texts is None:
+                continue
+            if isinstance(texts, str):
+                texts = [texts]
+
+            # Check if any text entry has freq info (skip regression lines)
+            if not any("Freq:" in str(t) for t in texts):
+                continue
+
+            base_color = None
+            if hasattr(trace, "marker") and trace.marker is not None:
+                bc = trace.marker.color
+                if isinstance(bc, str) and bc.startswith("#"):
+                    base_color = bc
+                elif bc == "lightgray":
+                    base_color = "#c0c0c0"
+
+            rgba_colors = []
+            for t in texts:
+                f = _parse_freq_from_hovertext(t)
+                is_match = f is not None and any(abs(f - hf) <= match_tol for hf in highlighted_freqs)
+                alpha = 1.0 if is_match else DIM_OPACITY
+                if base_color:
+                    rgba_colors.append(_hex_to_rgba(base_color, alpha))
+                else:
+                    rgba_colors.append(f"rgba(136,136,136,{alpha})")
+
+            if rgba_colors:
+                trace.marker.color = rgba_colors
+                trace.marker.opacity = None  # per-point color overrides global opacity
+
+        st.plotly_chart(display_fig, use_container_width=True)
+    else:
+        st.plotly_chart(st.session_state["model_fig"], use_container_width=True)
+>>>>>>> 6680dfe (Highlight input freqs on plot on-the-fly)
 
 # ── Cluster inspector ─────────────────────────────────────────────────────────
 if "clusterer" in st.session_state:

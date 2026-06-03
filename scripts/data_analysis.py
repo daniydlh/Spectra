@@ -17,8 +17,8 @@ from utils import (concat_cols_on_freq, detect_peaks, combine_unique_freqs,
 
 
 
-molecule = 'so2'
-spectra = ['so2', 'h2o', 'd2o']
+molecule = 'ocs'
+spectra = ['ocs_1%', 'ocs_0.64%', 'ocs_0.13%']
 i1, i2, i3 = f'int_{spectra[0]}', f'int_{spectra[1]}', f'int_{spectra[2]}'
 cols = [i1, i2, i3]
 """
@@ -27,9 +27,9 @@ data2 = "DFM_DOH.csv"
 data3 = "DFM_D2O.csv"
 sep = " "
 """
-data1 = "2025-12-19-SO2_2300k.csv"
-data2 = "2025-10-16-SO2-W_2200k.csv"
-data3 = "2025-10-16-SO2-D-W_2000k.csv"
+data1 = "2026-4-27_OSC-H2O_700kav_1%.csv"
+data2 = "2026-4-27_OSC-H2O_2500kav_0.64%.csv"
+data3 = "2026-4-27_OSC-H2O_1000kav_0.13%.csv"
 sep = ","
 dir = "data/spectra_docs_link/spectra"
 
@@ -50,6 +50,7 @@ df_spectra3 = pl.read_csv(f"{dir}/{molecule}/{data3}",
                         skip_rows=0,
                         separator=sep)
 df_spectra3
+
 # Data construction: 
 # --- df_all: all data
 # --- df_signals: data above noise
@@ -64,15 +65,6 @@ sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
 df_signals, detection_limits = apply_detection_limits(df_all_set0, sigma_list, detection_mult=3) #removes noise
 print(detection_limits)
 
-"""
-data4 = "2025-12-19-SO2_2300k.fft"
-df = pd.read_csv(f"{dir}/{molecule}/{data4}", skiprows=14, header=0, sep=sep, index_col=False)
-df
-df, dl, peaks = pipeline_spectra_GUI(df, sigma=sigma_list, multiplier=3, freq_col='freq')
-peaks['intensity'][:,0]
-type(peaks)
-dl
-"""
 
 #FIND PEAKS
 peak_dict = detect_peaks(df_signals) #gets freq of each peak above noise
@@ -97,7 +89,14 @@ df_signals = ratio_arc_cols(df_signals, ratio=True, arctan2=True)
 df_int, df_int_bool = int_is_peak(df_int, peak_array, 0.05)
 df_int, df_groups_incr_decrs_overall = increase_or_decrease(df_int, cols, 0.1)
 df_int.height
-df_int
+print(df_int)
+df_int = df_int.filter((pl.col(i1) != 0.) & (pl.col(i2) != 0.))
+print(df_int.height)
+
+plot_2d_int(f"data/spectra_docs_link/plots/intensity_rays/{molecule}/plot_2d_{spectra[0]}_{spectra[1]}", df_int, i1, i2, peaks=None, save_html=True, save_pdf=True)
+plot_spectra(f"data/spectra_docs_link/plots/spectra/{molecule}/spectra_{spectra[1]}", df_signals, peak_array, 'freq', i2, detection_limits[0], show_peaks=False, show_threshold=False, save_html=True, save_pdf=True)
+
+
 # Temporarily show all rows of every DataFrame
 """
 with pl.Config():
