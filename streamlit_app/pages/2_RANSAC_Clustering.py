@@ -132,7 +132,7 @@ if st.sidebar.button("Restore default parameters"):
 # ── Run controls ──────────────────────────────────────────────────────────────
 #reassign = st.checkbox("Reassign by angular proximity after fitting", value=True, key="reassign_proximity")
 
-run_clicked = st.button("RUN MODEL", key="run_model_btn", width="stretch")
+run_clicked = st.button("RUN MODEL", key="run_model_btn", use_container_width=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 if run_clicked:
@@ -228,7 +228,7 @@ if "model_fig" in st.session_state:
         st.session_state["peak_cluster_csv"],
         "cluster_output.csv",
         key="download_cluster",
-        width="stretch",
+        use_container_width=True,
         type="primary",
     )
 
@@ -318,6 +318,7 @@ if "model_fig" in st.session_state:
                     base_color = "#c0c0c0"
 
             rgba_colors = []
+            rgba_line_colors = []
             for t in texts:
                 f = _parse_freq_from_hovertext(t)
                 is_match = f is not None and any(abs(f - hf) <= match_tol for hf in highlighted_freqs)
@@ -326,10 +327,13 @@ if "model_fig" in st.session_state:
                     rgba_colors.append(_hex_to_rgba(base_color, alpha))
                 else:
                     rgba_colors.append(f"rgba(136,136,136,{alpha})")
+                rgba_line_colors.append(f"rgba(0,0,0,{alpha})")
 
             if rgba_colors:
                 trace.marker.color = rgba_colors
                 trace.marker.opacity = None  # per-point color overrides global opacity
+                if trace.marker.line is not None:
+                    trace.marker.line.color = rgba_line_colors
 
         st.plotly_chart(display_fig, use_container_width=True)
     else:
@@ -392,7 +396,7 @@ if "clusterer" in st.session_state:
             df_pts = df_pts[["freq", col_names[0], col_names[1]]]
             df_pts.index.name = "point"
 
-            st.dataframe(df_pts, width="stretch", height=300)
+            st.dataframe(df_pts, use_container_width=True, height=300)
 
             fig_hist = clusterer.interactive_distance_histogram(
                 cluster_id=c["id"],
@@ -402,7 +406,7 @@ if "clusterer" in st.session_state:
                 show_fig=False,
             )
             fig_hist.update_layout(title=f"Angular distance histogram of each point to the cluster {display_idx} ray ")
-            st.plotly_chart(fig_hist, width="stretch", key=f"hist_{display_idx}")
+            st.plotly_chart(fig_hist, use_container_width=True, key=f"hist_{display_idx}")
 
             st.download_button(
                 label=f"⬇ Download cluster {display_idx} points (CSV)",
@@ -410,7 +414,7 @@ if "clusterer" in st.session_state:
                 file_name=f"cluster_{display_idx}_arctan{c['arctan']:.4f}.csv",
                 mime="text/csv",
                 key=f"dl_cluster_{display_idx}",
-                width="stretch"
+                use_container_width=True
             )
 
     # ── Echo file ─────────────────────────────────────────────────────────────
@@ -460,7 +464,7 @@ if "clusterer" in st.session_state:
                 file_name="echo.acs",
                 mime="text/csv",
                 key="download_echo",
-                width="stretch",
+                use_container_width=True,
                 type="primary",
             )
         else:
