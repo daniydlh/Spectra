@@ -232,11 +232,6 @@ if "model_fig" in st.session_state:
         type="primary",
     )
 
-<<<<<<< HEAD
-    st.plotly_chart(st.session_state["model_fig"], width="stretch")
-
-=======
->>>>>>> 6680dfe (Highlight input freqs on plot on-the-fly)
     st.subheader("Check the cluster of specific lines")
 
     col1, col2 = st.columns(2)
@@ -276,20 +271,6 @@ if "model_fig" in st.session_state:
                 matches = all_model_freqs[np.abs(all_model_freqs - f_query) <= match_tol]
                 highlighted_freqs.update(matches.tolist())
 
-<<<<<<< HEAD
-            if uploaded_freqs and freq_cluster is not None:
-                ...
-                st.download_button(
-                    "⬇ Download assigned clusters (CSV)",
-                    assigned_freqs.to_csv(index=False),
-                    "freqs_to_cluster.csv",
-                    key="download_specific_freq",
-                    width="stretch",
-                    type="primary",
-                )
-            elif uploaded_freqs and freq_cluster is None:
-                st.warning("Run the model first.")
-=======
             st.download_button(
                 "⬇ Download assigned clusters (CSV)",
                 assigned_freqs.to_csv(index=False),
@@ -353,7 +334,6 @@ if "model_fig" in st.session_state:
         st.plotly_chart(display_fig, use_container_width=True)
     else:
         st.plotly_chart(st.session_state["model_fig"], use_container_width=True)
->>>>>>> 6680dfe (Highlight input freqs on plot on-the-fly)
 
 # ── Cluster inspector ─────────────────────────────────────────────────────────
 if "clusterer" in st.session_state:
