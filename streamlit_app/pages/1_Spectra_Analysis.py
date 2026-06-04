@@ -69,10 +69,11 @@ if 'df_stored' not in st.session_state:
             [pl.from_pandas(d) for d in dfs], col_names
         ).to_pandas()
 
-        sigma_list = pipeline_sigma_GUI(df)
+        sigma_list, df_set0 = pipeline_sigma_GUI(df)
 
         st.session_state['dfs_stored'] = dfs
         st.session_state['df_stored'] = df
+        st.session_state['df_set0_stored'] = df_set0
         st.session_state['mix_list_stored'] = mix_list
         st.session_state['sigma_init'] = sigma_list
         st.rerun()
@@ -81,7 +82,7 @@ else:
     names = st.session_state.get('file_names_stored', ['?', '?'])
     st.info(f"**First file:** {names[0]}  \n**Second file:** {names[1]}")
     if st.button("Re-uploads files"):
-        for key in ['dfs_stored', 'sigma_init', 'mix_list_stored', 'mult_stored', 'file_names_stored', 'df_stored']:
+        for key in ['dfs_stored', 'sigma_init', 'mix_list_stored', 'mult_stored', 'file_names_stored', 'df_stored', 'df_set0_stored']:
             st.session_state.pop(key, None)
         st.rerun()
 
@@ -89,6 +90,7 @@ else:
 # --- SIDEBAR PARAMETERS + MAIN PLOT ---
 if 'dfs_stored' in st.session_state:
     df        = st.session_state['df_stored']
+    df_set0   = st.session_state['df_set0_stored']
     mix_list  = st.session_state['mix_list_stored']
     sigma_init = st.session_state['sigma_init']
     mix1, mix2 = mix_list[0], mix_list[1]
@@ -136,8 +138,8 @@ if 'dfs_stored' in st.session_state:
     st.session_state['removes_zeros'] = remove_zeros
 
     # --- RUN PIPELINE ---
-    df, df_clean, df_peaks, detection_limits, peaks_array = pipeline_spectra_GUI(
-        df,
+    df_set0, df_clean, df_peaks, detection_limits, peaks_array = pipeline_spectra_GUI(
+        df_set0,
         sigma=sigma_list,
         multiplier=mult,
         freq_col='freq',
@@ -170,8 +172,8 @@ if 'dfs_stored' in st.session_state:
         fig = px.line()
 
         fig.add_scatter(
-            x=df['freq'],
-            y=df[col_names[i]],
+            x=df_set0['freq'],
+            y=df_set0[col_names[i]],
             mode="lines",
             name=mix_list[i],
             line=dict(color=LINE_COLORS[i % len(LINE_COLORS)], width=1.2)

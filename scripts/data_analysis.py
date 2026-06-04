@@ -11,8 +11,7 @@ from utils import (concat_cols_on_freq, detect_peaks, combine_unique_freqs,
                 plot_xy_by_ratio_ranges, make_ratio_ranges, groups_incr_decr,
                 how_much_decr_ref, plot_overlapped_spectra, set_baseline_at_zero,
                 apply_detection_limits, compute_sigma, only_noise, overwrite_from_peaks,
-                l2_normalization, pipeline_spectra_GUI)
-
+                l2_normalization, pipeline_spectra_GUI, )
 
 
 
@@ -20,7 +19,7 @@ from utils import (concat_cols_on_freq, detect_peaks, combine_unique_freqs,
 molecule = 'ocs'
 spectra = ['ocs_1%', 'ocs_0.64%', 'ocs_0.13%']
 i1, i2, i3 = f'int_{spectra[0]}', f'int_{spectra[1]}', f'int_{spectra[2]}'
-cols = [i1, i2, i3]
+cols = [i1, i2]
 """
 data1 = "DFM_H2O.csv"
 data2 = "DFM_DOH.csv"
@@ -49,7 +48,6 @@ df_spectra3 = pl.read_csv(f"{dir}/{molecule}/{data3}",
                         has_header=False, 
                         skip_rows=0,
                         separator=sep)
-df_spectra3
 
 # Data construction: 
 # --- df_all: all data
@@ -58,25 +56,35 @@ df_spectra3
 
 #SPECTRA PROCESSING - NOISE REMOVAL
 #sigma_list = [10e-6, 20e-6, 20e-6]
-df_all = concat_cols_on_freq([df_spectra1, df_spectra2, df_spectra3], cols)
+df_all = concat_cols_on_freq([df_spectra1, df_spectra2], cols)
+
+# get sigma
 df_all_set0 = set_baseline_at_zero(df_all) #computes median and sets base line (median) at 0 (median in noise is very very similar)
 noise = only_noise(df_all_set0, 1) #noise region over 5x mean (mean always positive, 0 and negative gives errors)
 sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
+
 df_signals, detection_limits = apply_detection_limits(df_all_set0, sigma_list, detection_mult=3) #removes noise
-print(detection_limits)
+print(sigma_list)
+print(df_signals.height)
 
 
 #FIND PEAKS
-peak_dict = detect_peaks(df_signals) #gets freq of each peak above noise
+peak_dict = detect_peaks(df_signals) #gets freq of each peak above noise 
+peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs. 
 peak_dict
-peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
-peak_array
-all_peaks = combine_unique_freqs(peak_dict)
-df_int = get_int_at_peaks_AIopt(all_peaks, df_signals, return_df=True) #using df_signals so freq is 0 if peak is bloew signal
+all_peaks = combine_unique_freqs(peak_dict)  #aqui falla 
+
+np.savetxt("peaks064_py.csv", peak_dict['int_ocs_0.64%']['peak_freq'], delimiter=",", fmt="%s")
+len(all_peaks)
+df_int = get_int_at_peaks_AIopt(all_peaks, df_signals, return_df=True) #using df_signals so freq is 0 if peak is below signal
+df_int.height
 #df_int_ext = get_int_at_peaks_AIopt(all_peaks, df_all_set0, return_df=True) #using df_all_set0 so freq peaks always have a value in all spectra
 df_int = unique_by_freq_keep_max3(df_int, "freq", cols, tol=0.05)
+df_int.height
 df_int = df_int.sort("freq")
 df_int.height
+df_int = df_int.filter((pl.col(i1) != 0.) & (pl.col(i2) != 0.))
+print(df_int.height)
 df_int.write_csv(f"{dir}/{molecule}/spectra_peaks.csv", include_header=True)
 
 #df_signals_ext = overwrite_from_peaks(df_signals, df_int, key="freq")
@@ -90,8 +98,7 @@ df_int, df_int_bool = int_is_peak(df_int, peak_array, 0.05)
 df_int, df_groups_incr_decrs_overall = increase_or_decrease(df_int, cols, 0.1)
 df_int.height
 print(df_int)
-df_int = df_int.filter((pl.col(i1) != 0.) & (pl.col(i2) != 0.))
-print(df_int.height)
+
 
 plot_2d_int(f"data/spectra_docs_link/plots/intensity_rays/{molecule}/plot_2d_{spectra[0]}_{spectra[1]}", df_int, i1, i2, peaks=None, save_html=True, save_pdf=True)
 plot_spectra(f"data/spectra_docs_link/plots/spectra/{molecule}/spectra_{spectra[1]}", df_signals, peak_array, 'freq', i2, detection_limits[0], show_peaks=False, show_threshold=False, save_html=True, save_pdf=True)

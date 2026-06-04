@@ -446,15 +446,23 @@ def unique_by_freq_keep_max3(df, freq_col, cols, tol):
 
     i1 = cols[0]
     i2 = cols[1]
-    i3 = cols[2]
+    if len(cols) == 3:
+        i3 = cols[2]
 
     df_binned = df.with_columns(
         ((pl.col(freq_col) / tol).round(0) * tol).alias("f_bin")
     )
 
-    df_scored = df_binned.with_columns(
-        pl.max_horizontal(i1, i2, i3).alias("imax")
-    )
+    if len(cols) == 2:
+        df_scored = df_binned.with_columns(
+            pl.max_horizontal(i1, i2).alias("imax")
+        )
+    if len(cols) == 3:
+        df_scored = df_binned.with_columns(
+            pl.max_horizontal(i1, i2, i3).alias("imax")
+        )
+
+    
 
     df_unique = (
         df_scored

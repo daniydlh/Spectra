@@ -1,4 +1,5 @@
 import polars as pl
+import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
@@ -7,7 +8,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 def pipeline_spectra_GUI(df, sigma=None, multiplier=None, freq_col='freq', cols=None, remove_zeros=False):
-    df = pl.from_pandas(df)
+    if isinstance(df, pd.DataFrame):
+        df = pl.from_pandas(df)
+    elif not isinstance(df, pl.DataFrame):
+        raise TypeError(f"Unsupported dataframe type: {type(df)}")
+
     df_clean, detection_limits = apply_detection_limits(df, sigma_list=sigma, detection_mult=multiplier)
     peak_dict = detect_peaks(df_clean) #gets freq of each peak above noise
     peak_array = peaks_dict_to_arrays(peak_dict) # N arrays of [freq, int] pairs
@@ -29,12 +34,19 @@ def pipeline_spectra_GUI(df, sigma=None, multiplier=None, freq_col='freq', cols=
 
 
 def pipeline_sigma_GUI(df):
-    df = pl.from_pandas(df)
+
+    if isinstance(df, pd.DataFrame):
+        df = pl.from_pandas(df)
+    elif not isinstance(df, pl.DataFrame):
+        raise TypeError(f"Unsupported dataframe type: {type(df)}")
+        
     df = set_baseline_at_zero(df) #computes median and sets base line (median) at 0 (median in noise is very very similar)
     noise = only_noise(df, 1) #noise region over 5x mean (mean always positive, 0 and negative gives errors)
     sigma_list = compute_sigma(noise) #computes sigma (std) from noise region
 
-    return sigma_list
+    df = df.to_pandas()
+
+    return sigma_list, df
 
 def apply_detection_limits(df: pl.DataFrame, sigma_list: list = None, detection_mult=3) -> pl.DataFrame:
     """

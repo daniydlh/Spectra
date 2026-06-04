@@ -7,7 +7,3 @@ Welcome to the spectroscopy analysis tool.
 Use the sidebar to navigate between modules.
 """)
 
-st.write("""
-While s
-""")
-
